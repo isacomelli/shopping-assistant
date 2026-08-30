@@ -1,0 +1,295 @@
+"""
+camada de acesso ao banco sqlite do assistente de compras.
+
+todas as tabelas ja possuem a coluna user_id, mesmo que hoje so exista
+um unico usuario local, justamente para facilitar uma eventual
+migracao para um servico multiusuario na nuvem no futuro.
+"""
+
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+
+CAMINHO_BANCO = Path(__file__).parent / "shopping.db"
+
+USER_ID_PADRAO = 1
+
+
+@contextmanager
+def conexao():
+    conn = sqlite3.connect(CAMINHO_BANCO)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def inicializar_banco():
+    with conexao() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS user_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                cdi_mensal REAL NOT NULL DEFAULT 1.1,
+                valor_livelo REAL NOT NULL DEFAULT 0.025,
+                valor_esfera REAL NOT NULL DEFAULT 0.023,
+                cotacao_dolar REAL NOT NULL DEFAULT 5.4,
+                orcamento_mudanca REAL NOT NULL DEFAULT 0,
+                atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS cartoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                nome TEXT NOT NULL,
+                pontos_por_dolar REAL NOT NULL DEFAULT 0,
+                cashback_pct REAL NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS produtos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                nome TEXT NOT NULL,
+                categoria TEXT,
+                orcamento REAL,
+                preco_alvo REAL,
+                status TEXT NOT NULL DEFAULT 'esperar',
+                criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS ofertas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                produto_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                loja TEXT NOT NULL,
+                tipo TEXT NOT NULL DEFAULT 'online',
+                preco_pix REAL NOT NULL,
+                preco_cartao REAL NOT NULL,
+                parcelas INTEGER NOT NULL DEFAULT 1,
+                pontos_por_real REAL NOT NULL DEFAULT 0,
+                valor_ponto REAL NOT NULL DEFAULT 0,
+                moeda_pontos TEXT NOT NULL DEFAULT 'R$',
+                cashback_pct REAL NOT NULL DEFAULT 0,
+                frete REAL NOT NULL DEFAULT 0,
+                cupom REAL NOT NULL DEFAULT 0,
+                observacoes TEXT,
+                validade TEXT,
+                confianca TEXT NOT NULL DEFAULT 'confirmada',
+                preco_efetivo REAL,
+                criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (produto_id) REFERENCES produtos(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS historico_precos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                produto_id INTEGER NOT NULL,
+                loja TEXT NOT NULL,
+                preco_anunciado REAL,
+                preco_efetivo REAL,
+                registrado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (produto_id) REFERENCES produtos(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS livelo_parceiros (
+                codigo TEXT PRIMARY KEY,
+                nome TEXT NOT NULL,
+                url TEXT NOT NULL,
+                pontos_padrao REAL,
+                moeda_padrao TEXT,
+                pontos_clube REAL,
+                em_promocao INTEGER,
+                pontos_anteriores REAL,
+                atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+
+        conn.execute(
+            "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
+            (USER_ID_PADRAO,),
+        )
+
+
+# configuracoes
+
+def obter_configuracoes():
+    with conexao() as conn:
+        linha = conn.execute(
+            "SELECT * FROM user_settings WHERE user_id = ?", (USER_ID_PADRAO,)
+        ).fetchone()
+        return dict(linha)
+
+
+def salvar_configuracoes(cdi_mensal, valor_livelo, valor_esfera, cotacao_dolar, orcamento_mudanca):
+    with conexao() as conn:
+        conn.execute(
+            """
+            UPDATE user_settings
+            SET cdi_mensal = ?, valor_livelo = ?, valor_esfera = ?,
+                cotacao_dolar = ?, orcamento_mudanca = ?, atualizado_em = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            """,
+            (cdi_mensal, valor_livelo, valor_esfera, cotacao_dolar, orcamento_mudanca, USER_ID_PADRAO),
+        )
+
+
+# cartoes
+
+def listar_cartoes():
+    with conexao() as conn:
+        linhas = conn.execute(
+            "SELECT * FROM cartoes WHERE user_id = ? ORDER BY nome", (USER_ID_PADRAO,)
+        ).fetchall()
+        return [dict(linha) for linha in linhas]
+
+
+def adicionar_cartao(nome, pontos_por_dolar, cashback_pct):
+    with conexao() as conn:
+        conn.execute(
+            "INSERT INTO cartoes (user_id, nome, pontos_por_dolar, cashback_pct) VALUES (?, ?, ?, ?)",
+            (USER_ID_PADRAO, nome, pontos_por_dolar, cashback_pct),
+        )
+
+
+def remover_cartao(cartao_id):
+    with conexao() as conn:
+        conn.execute("DELETE FROM cartoes WHERE id = ? AND user_id = ?", (cartao_id, USER_ID_PADRAO))
+
+
+# produtos, a wishlist da reforma
+
+def listar_produtos():
+    with conexao() as conn:
+        linhas = conn.execute(
+            "SELECT * FROM produtos WHERE user_id = ? ORDER BY criado_em DESC", (USER_ID_PADRAO,)
+        ).fetchall()
+        return [dict(linha) for linha in linhas]
+
+
+def obter_produto(produto_id):
+    with conexao() as conn:
+        linha = conn.execute(
+            "SELECT * FROM produtos WHERE id = ? AND user_id = ?", (produto_id, USER_ID_PADRAO)
+        ).fetchone()
+        return dict(linha) if linha else None
+
+
+def adicionar_produto(nome, categoria, orcamento, preco_alvo, status="esperar"):
+    with conexao() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO produtos (user_id, nome, categoria, orcamento, preco_alvo, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (USER_ID_PADRAO, nome, categoria, orcamento, preco_alvo, status),
+        )
+        return cursor.lastrowid
+
+
+def atualizar_status_produto(produto_id, status):
+    with conexao() as conn:
+        conn.execute(
+            "UPDATE produtos SET status = ? WHERE id = ? AND user_id = ?",
+            (status, produto_id, USER_ID_PADRAO),
+        )
+
+
+# ofertas
+
+def listar_ofertas_por_produto(produto_id):
+    with conexao() as conn:
+        linhas = conn.execute(
+            "SELECT * FROM ofertas WHERE produto_id = ? ORDER BY criado_em DESC", (produto_id,)
+        ).fetchall()
+        return [dict(linha) for linha in linhas]
+
+
+def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+                      pontos_por_real, valor_ponto, moeda_pontos, cashback_pct,
+                      frete, cupom, observacoes, validade, confianca, preco_efetivo):
+    with conexao() as conn:
+        conn.execute(
+            """
+            INSERT INTO ofertas (
+                produto_id, user_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+                pontos_por_real, valor_ponto, moeda_pontos, cashback_pct, frete, cupom,
+                observacoes, validade, confianca, preco_efetivo
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                produto_id, USER_ID_PADRAO, loja, tipo, preco_pix, preco_cartao, parcelas,
+                pontos_por_real, valor_ponto, moeda_pontos, cashback_pct, frete, cupom,
+                observacoes, validade, confianca, preco_efetivo,
+            ),
+        )
+
+
+# historico de precos
+
+def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo):
+    with conexao() as conn:
+        conn.execute(
+            """
+            INSERT INTO historico_precos (produto_id, loja, preco_anunciado, preco_efetivo)
+            VALUES (?, ?, ?, ?)
+            """,
+            (produto_id, loja, preco_anunciado, preco_efetivo),
+        )
+
+
+def listar_historico(produto_id):
+    with conexao() as conn:
+        linhas = conn.execute(
+            "SELECT * FROM historico_precos WHERE produto_id = ? ORDER BY registrado_em",
+            (produto_id,),
+        ).fetchall()
+        return [dict(linha) for linha in linhas]
+
+
+# parceiros livelo
+
+def salvar_parceiros_livelo(parceiros):
+    with conexao() as conn:
+        for parceiro in parceiros:
+            conn.execute(
+                """
+                INSERT INTO livelo_parceiros (
+                    codigo, nome, url, pontos_padrao, moeda_padrao,
+                    pontos_clube, em_promocao, pontos_anteriores, atualizado_em
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(codigo) DO UPDATE SET
+                    nome = excluded.nome,
+                    url = excluded.url,
+                    pontos_padrao = excluded.pontos_padrao,
+                    moeda_padrao = excluded.moeda_padrao,
+                    pontos_clube = excluded.pontos_clube,
+                    em_promocao = excluded.em_promocao,
+                    pontos_anteriores = excluded.pontos_anteriores,
+                    atualizado_em = CURRENT_TIMESTAMP
+                """,
+                (
+                    parceiro.codigo, parceiro.nome, parceiro.url, parceiro.pontos_padrao,
+                    parceiro.moeda_padrao, parceiro.pontos_clube, int(parceiro.em_promocao),
+                    parceiro.pontos_anteriores,
+                ),
+            )
+
+
+def listar_parceiros_livelo():
+    with conexao() as conn:
+        linhas = conn.execute("SELECT * FROM livelo_parceiros ORDER BY nome").fetchall()
+        return [dict(linha) for linha in linhas]
+
+
+def buscar_parceiro_livelo_por_nome(termo):
+    with conexao() as conn:
+        linhas = conn.execute(
+            "SELECT * FROM livelo_parceiros WHERE nome LIKE ? ORDER BY nome",
+            (f"%{termo}%",),
+        ).fetchall()
+        return [dict(linha) for linha in linhas]

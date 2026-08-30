@@ -1,0 +1,35 @@
+# ambiente virtual
+.venv/
+venv/
+env/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# banco de dados local, nunca deve ir para o github
+database/*.db
+database/*.db-journal
+
+# playwright
+.cache/
+ms-playwright/
+
+# variaveis de ambiente, caso venha a usar chaves de api no futuro
+.env
+
+# streamlit
+.streamlit/secrets.toml
+
+# sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# editores
+.vscode/
+.idea/
+*.swp
