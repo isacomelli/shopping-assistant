@@ -23,25 +23,25 @@ def _tentar_converter_data(texto):
         return None
 
 
-st.set_page_config(page_title="Historico", layout="wide")
+st.set_page_config(page_title="Histórico", layout="wide")
 
 db.inicializar_banco()
 
-st.title("Historico de precos")
+st.title("Histórico de Preços")
 
 produtos = db.listar_produtos()
 
 if not produtos:
-    st.info("nenhum produto cadastrado ainda")
+    st.info("Nenhum produto cadastrado ainda.")
     st.stop()
 
-nome_escolhido = st.selectbox("produto", [produto["nome"] for produto in produtos])
+nome_escolhido = st.selectbox("Produto", [produto["nome"] for produto in produtos])
 produto_atual = next(produto for produto in produtos if produto["nome"] == nome_escolhido)
 
 historico = db.listar_historico(produto_atual["id"])
 
 if not historico:
-    st.info("ainda nao ha historico registrado para este produto, cadastre ofertas na calculadora")
+    st.info("Ainda não há histórico registrado para este produto, cadastre ofertas na Calculadora.")
     st.stop()
 
 renderizar_grafico_linha_svg(
@@ -53,7 +53,7 @@ precos = [linha["preco_efetivo"] for linha in historico if linha["preco_efetivo"
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("menor preco ja encontrado", f"r$ {min(precos):.2f}")
+    st.metric("Menor preço já encontrado", f"R$ {min(precos):.2f}")
 with col2:
     trinta_dias_atras = datetime.now() - timedelta(days=30)
     precos_recentes = [
@@ -63,35 +63,35 @@ with col2:
         and _tentar_converter_data(linha["registrado_em"]) and _tentar_converter_data(linha["registrado_em"]) >= trinta_dias_atras
     ]
     media_recente = statistics.mean(precos_recentes) if precos_recentes else statistics.mean(precos)
-    st.metric("media dos ultimos 30 dias", f"r$ {media_recente:.2f}")
+    st.metric("Média dos últimos 30 dias", f"R$ {media_recente:.2f}")
 with col3:
     preco_atual = precos[-1]
-    st.metric("preco atual", f"r$ {preco_atual:.2f}")
+    st.metric("Preço atual", f"R$ {preco_atual:.2f}")
 
 if preco_atual < media_recente:
     diferenca_pct = (1 - preco_atual / media_recente) * 100
-    st.success(f"vale comprar agora, esta {diferenca_pct:.1f}% abaixo da media dos ultimos 30 dias")
+    st.success(f"Vale comprar agora, está {diferenca_pct:.1f}% abaixo da média dos últimos 30 dias.")
 elif preco_atual > media_recente:
     diferenca_pct = (preco_atual / media_recente - 1) * 100
-    st.warning(f"esta {diferenca_pct:.1f}% acima da media dos ultimos 30 dias, talvez valha esperar")
+    st.warning(f"Está {diferenca_pct:.1f}% acima da média dos últimos 30 dias, talvez valha esperar.")
 else:
-    st.info("preco atual esta na media dos ultimos 30 dias")
+    st.info("Preço atual está na média dos últimos 30 dias.")
 
-st.header("Todas as pesquisas registradas")
+st.header("Todas as Pesquisas Registradas")
 renderizar_tabela_html(
     [
         {
             "data": linha["registrado_em"],
             "loja": linha["loja"],
-            "preco anunciado": linha["preco_anunciado"],
-            "preco efetivo": linha["preco_efetivo"],
+            "preço anunciado": linha["preco_anunciado"],
+            "preço efetivo": linha["preco_efetivo"],
         }
         for linha in reversed(historico)
     ],
     colunas=[
-        ("data", "data"),
-        ("loja", "loja"),
-        ("preco anunciado", "preco anunciado"),
-        ("preco efetivo", "preco efetivo"),
+        ("data", "Data"),
+        ("loja", "Loja"),
+        ("preço anunciado", "Preço Anunciado"),
+        ("preço efetivo", "Preço Efetivo"),
     ],
 )

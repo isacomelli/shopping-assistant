@@ -19,11 +19,11 @@ db.inicializar_banco()
 
 st.title("Assistente de Compras da Reforma")
 st.write(
-    "use o menu lateral para acessar a calculadora, a wishlist, o "
-    "historico de precos e a lista de parceiros da livelo."
+    "Utilize o menu lateral para acessar a Calculadora, a Wishlist, o "
+    "Histórico de Preços e a busca de parceiros da Livelo e do Méliuz."
 )
 
-st.header("Perfil financeiro")
+st.header("Perfil Financeiro")
 
 config = db.obter_configuracoes()
 
@@ -40,14 +40,14 @@ def _buscar_cotacao_automatica():
 
 col_cotacao_1, col_cotacao_2 = st.columns([3, 1])
 with col_cotacao_2:
-    if st.button("atualizar cotacao agora"):
+    if st.button("Atualizar cotação agora"):
         _buscar_cotacao_automatica.clear()
         cotacao_atual = _buscar_cotacao_automatica()
         if cotacao_atual:
             st.session_state["cotacao_dolar_sugerida"] = cotacao_atual
-            st.success(f"cotacao encontrada, r$ {cotacao_atual:.2f}")
+            st.success(f"Cotação encontrada, R$ {cotacao_atual:.2f}.")
         else:
-            st.warning("nao foi possivel buscar a cotacao agora, digite manualmente")
+            st.warning("Não foi possível buscar a cotação agora, digite manualmente.")
 
 if "cotacao_dolar_sugerida" not in st.session_state:
     cotacao_automatica = _buscar_cotacao_automatica()
@@ -60,37 +60,37 @@ with st.form("form_perfil"):
     col1, col2 = st.columns(2)
     with col1:
         cdi_mensal = st.number_input(
-            "cdi mensal (%)", value=float(config["cdi_mensal"]), step=0.01, format="%.2f",
+            "CDI mensal (%)", value=float(config["cdi_mensal"]), step=0.01, format="%.2f",
         )
         valor_milheiro_padrao = st.number_input(
-            "valor padrao do milheiro (r$)",
+            "Valor padrão do milheiro (R$)",
             value=float(config["valor_milheiro_padrao"]),
             step=1.0,
             format="%.2f",
-            help="usado como sugestao ao cadastrar uma oferta, sempre pode ser ajustado por oferta",
+            help="Usado como sugestão ao cadastrar uma oferta, sempre pode ser ajustado por oferta.",
         )
     with col2:
         cotacao_dolar = st.number_input(
-            "cotacao do dolar (r$)", value=float(cotacao_padrao), step=0.01, format="%.2f",
-            help="preenchida automaticamente ao abrir a tela, edite se quiser usar outro valor",
+            "Cotação do dólar (R$)", value=float(cotacao_padrao), step=0.01, format="%.2f",
+            help="Preenchida automaticamente ao abrir a tela, edite se quiser usar outro valor.",
         )
         pontos_dolar_cartao_padrao = st.number_input(
-            "pontos por dolar padrao no cartao",
+            "Pontos por dólar padrão no cartão",
             value=float(config["pontos_dolar_cartao_padrao"]),
             step=0.5,
-            help="taxa de pontuacao usada como sugestao para o cartao selecionado na calculadora",
+            help="Taxa de pontuação usada como sugestão para o cartão selecionado na Calculadora.",
         )
 
-    enviado = st.form_submit_button("salvar perfil")
+    enviado = st.form_submit_button("Salvar perfil")
     if enviado:
         db.salvar_configuracoes(cdi_mensal, cotacao_dolar, valor_milheiro_padrao, pontos_dolar_cartao_padrao)
-        st.success("perfil salvo")
+        st.success("Perfil salvo com sucesso.")
         st.rerun()
 
-st.header("Cartoes cadastrados")
+st.header("Cartões Cadastrados")
 st.caption(
-    "cadastre aqui os cartoes que voce usa para comprar, com a taxa de "
-    "pontos por dolar gasto ou o cashback, para entrarem no calculo."
+    "Cadastre aqui os cartões que você usa para comprar, com a taxa de "
+    "pontos por dólar gasto ou o cashback, para entrarem no cálculo."
 )
 
 cartoes = db.listar_cartoes()
@@ -98,35 +98,35 @@ if cartoes:
     renderizar_tabela_html(
         [
             {
-                "cartao": cartao["nome"],
-                "pontos por dolar": cartao["pontos_por_dolar"],
+                "cartão": cartao["nome"],
+                "pontos por dólar": cartao["pontos_por_dolar"],
                 "cashback (%)": cartao["cashback_pct"],
             }
             for cartao in cartoes
         ],
         colunas=[
-            ("cartao", "cartao"),
-            ("pontos por dolar", "pontos por dolar"),
-            ("cashback (%)", "cashback (%)"),
+            ("cartão", "Cartão"),
+            ("pontos por dólar", "Pontos por Dólar"),
+            ("cashback (%)", "Cashback (%)"),
         ],
     )
 else:
-    st.info("nenhum cartao cadastrado ainda")
+    st.info("Nenhum cartão cadastrado ainda.")
 
 with st.form("form_cartao", clear_on_submit=True):
     col1, col2, col3 = st.columns(3)
     with col1:
-        nome_cartao = st.text_input("nome do cartao")
+        nome_cartao = st.text_input("Nome do cartão")
     with col2:
-        pontos_dolar = st.number_input("pontos por dolar gasto", min_value=0.0, step=0.5)
+        pontos_dolar = st.number_input("Pontos por dólar gasto", min_value=0.0, step=0.5)
     with col3:
-        cashback_cartao = st.number_input("cashback (%)", min_value=0.0, step=0.5)
+        cashback_cartao = st.number_input("Cashback (%)", min_value=0.0, step=0.5)
 
-    enviado_cartao = st.form_submit_button("adicionar cartao")
+    enviado_cartao = st.form_submit_button("Adicionar cartão")
     if enviado_cartao:
         if nome_cartao.strip():
             db.adicionar_cartao(nome_cartao.strip(), pontos_dolar, cashback_cartao)
-            st.success(f"cartao {nome_cartao} adicionado")
+            st.success(f"Cartão {nome_cartao} adicionado com sucesso.")
             st.rerun()
         else:
-            st.warning("digite o nome do cartao")
+            st.warning("Digite o nome do cartão.")

@@ -10,6 +10,12 @@ usava o app antes, nao da pra so mudar o CREATE TABLE, ele so roda na
 primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE
 dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja
 existe.
+
+sobre o cache de parceiros por loja, desde que o fluxo passou a
+buscar primeiro no buscape e so depois consultar livelo, esfera e
+meliuz loja a loja, cada consulta individual fica guardada por 24
+horas na tabela cache_parceiros_loja, para nao precisar reabrir o
+navegador toda vez que a mesma loja aparecer numa nova pesquisa.
 """
 
 import sqlite3
@@ -22,6 +28,8 @@ USER_ID_PADRAO = 1
 
 VALOR_MILHEIRO_PADRAO = 15.0
 PONTOS_DOLAR_CARTAO_PADRAO = 3.0
+
+HORAS_VALIDADE_CACHE_PARCEIRO = 24
 
 
 @contextmanager
@@ -147,6 +155,20 @@ def inicializar_banco():
                 em_promocao INTEGER,
                 pontos_anteriores REAL,
                 atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS cache_parceiros_loja (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                loja_normalizada TEXT NOT NULL,
+                programa TEXT NOT NULL,
+                encontrado INTEGER NOT NULL DEFAULT 0,
+                pontos_por_real REAL,
+                moeda_padrao TEXT,
+                cashback_pct REAL,
+                regras_extras TEXT,
+                url_consultada TEXT,
+                atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(loja_normalizada, programa)
             );
             """
         )
@@ -303,7 +325,9 @@ def listar_historico(produto_id):
         return [dict(linha) for linha in linhas]
 
 
-# parceiros livelo
+# parceiros livelo, lista publica completa (mantida apenas como
+# consulta manual de apoio, o fluxo automatico principal agora usa o
+# cache por loja, mais abaixo)
 
 def salvar_parceiros_livelo(parceiros):
     with conexao() as conn:
@@ -345,3 +369,62 @@ def buscar_parceiro_livelo_por_nome(termo):
             (f"%{termo}%",),
         ).fetchall()
         return [dict(linha) for linha in linhas]
+
+
+# cache de parceiros por loja, usado pelo fluxo buscape -> livelo,
+# esfera e meliuz sob demanda, ver docstring do modulo
+
+def normalizar_nome_loja(nome_loja):
+    """
+    normaliza o nome de uma loja para servir de chave de cache,
+    minusculo e sem espaco nas pontas, para que "Fast Shop" e
+    " fast shop " caiam no mesmo registro.
+    """
+    return " ".join(nome_loja.strip().lower().split())
+
+
+def obter_cache_parceiro_loja(loja, programa):
+    """
+    devolve o registro de cache de um programa, livelo, esfera ou
+    meliuz, para uma loja, desde que ele tenha menos de
+    HORAS_VALIDADE_CACHE_PARCEIRO horas. devolve none quando nao ha
+    cache ou quando ele ja venceu.
+    """
+    loja_normalizada = normalizar_nome_loja(loja)
+    with conexao() as conn:
+        linha = conn.execute(
+            """
+            SELECT * FROM cache_parceiros_loja
+            WHERE loja_normalizada = ? AND programa = ?
+              AND datetime(atualizado_em) >= datetime('now', ?)
+            """,
+            (loja_normalizada, programa, f"-{HORAS_VALIDADE_CACHE_PARCEIRO} hours"),
+        ).fetchone()
+        return dict(linha) if linha else None
+
+
+def salvar_cache_parceiro_loja(loja, programa, encontrado, pontos_por_real=None,
+                                moeda_padrao=None, cashback_pct=None, regras_extras=None,
+                                url_consultada=None):
+    loja_normalizada = normalizar_nome_loja(loja)
+    with conexao() as conn:
+        conn.execute(
+            """
+            INSERT INTO cache_parceiros_loja (
+                loja_normalizada, programa, encontrado, pontos_por_real,
+                moeda_padrao, cashback_pct, regras_extras, url_consultada, atualizado_em
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(loja_normalizada, programa) DO UPDATE SET
+                encontrado = excluded.encontrado,
+                pontos_por_real = excluded.pontos_por_real,
+                moeda_padrao = excluded.moeda_padrao,
+                cashback_pct = excluded.cashback_pct,
+                regras_extras = excluded.regras_extras,
+                url_consultada = excluded.url_consultada,
+                atualizado_em = CURRENT_TIMESTAMP
+            """,
+            (
+                loja_normalizada, programa, int(encontrado), pontos_por_real,
+                moeda_padrao, cashback_pct, regras_extras, url_consultada,
+            ),
+        )

@@ -33,3 +33,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# html de depuracao salvo pelos scrapers quando uma consulta falha
+scrapers/debug_*.html
