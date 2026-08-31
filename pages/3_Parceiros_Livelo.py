@@ -9,6 +9,7 @@ import streamlit as st
 
 from database import db
 from scrapers.livelo import buscar_parceiros_livelo
+from utils.ui import renderizar_tabela_html
 
 st.set_page_config(page_title="Parceiros Livelo", layout="wide")
 
@@ -30,8 +31,9 @@ with col1:
                 st.success(f"{len(parceiros)} parceiros atualizados")
             except Exception as erro:
                 st.error(
-                    "nao foi possivel atualizar agora, o site pode ter mudado ou "
-                    f"estar indisponivel. detalhe tecnico, {erro}"
+                    "nao foi possivel atualizar agora, o site pode ter mudado, estar "
+                    "indisponivel ou ter bloqueado o navegador automatizado. detalhe "
+                    f"tecnico, {erro}"
                 )
 
 parceiros_salvos = db.listar_parceiros_livelo()
@@ -49,7 +51,7 @@ else:
 
 st.caption(f"{len(parceiros_filtrados)} parceiros, atualizado pela ultima vez em {parceiros_salvos[0]['atualizado_em']}")
 
-st.dataframe(
+renderizar_tabela_html(
     [
         {
             "parceiro": parceiro["nome"],
@@ -61,6 +63,12 @@ st.dataframe(
         }
         for parceiro in parceiros_filtrados
     ],
-    use_container_width=True,
-    hide_index=True,
+    colunas=[
+        ("parceiro", "parceiro"),
+        ("pontos por real ou dolar", "pontos por real ou dolar"),
+        ("moeda", "moeda"),
+        ("pontos clube", "pontos clube"),
+        ("em promocao", "em promocao"),
+        ("pontos anteriores", "pontos anteriores"),
+    ],
 )

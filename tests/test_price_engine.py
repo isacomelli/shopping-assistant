@@ -110,3 +110,40 @@ def test_simular_parcelamento_gera_uma_linha_por_quantidade_de_parcelas():
     assert resultado[0]["parcelas"] == 1
     assert resultado[-1]["parcelas"] == 12
     assert resultado[0]["custo_efetivo"] == 779
+
+
+def test_calcular_oferta_usa_milheiro_quando_valor_milheiro_preenchido():
+    from engine.price_engine import calcular_valor_pontos_por_milhas
+
+    oferta = Oferta(
+        loja="xp",
+        preco_pix=1571.00,
+        preco_cartao=1651.37,
+        parcelas=1,
+        pontos_por_real=10,
+        cotacao_dolar=5.3,
+        pontos_por_dolar_cartao=3,
+        percentual_bonus_transferencia=80,
+        valor_milheiro=15,
+    )
+    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
+
+    valor_esperado_pix = calcular_valor_pontos_por_milhas(1571.00, 10, 5.3, 3, 80, 15)
+    valor_esperado_cartao = calcular_valor_pontos_por_milhas(1651.37, 10, 5.3, 3, 80, 15)
+
+    assert round(resultado.pontos_valor_pix, 4) == round(valor_esperado_pix, 4)
+    assert round(resultado.pontos_valor_cartao, 4) == round(valor_esperado_cartao, 4)
+
+
+def test_calcular_oferta_ignora_milheiro_quando_valor_milheiro_zero():
+    oferta = Oferta(
+        loja="loja sem milhas",
+        preco_pix=1000,
+        preco_cartao=1000,
+        pontos_por_real=10,
+        valor_ponto=0.025,
+        pontos_por_dolar_cartao=3,
+        percentual_bonus_transferencia=80,
+    )
+    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
+    assert resultado.pontos_valor_pix == 1000 * 10 * 0.025

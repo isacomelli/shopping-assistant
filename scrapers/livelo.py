@@ -21,6 +21,14 @@ esconde o sinal mais comum de automacao, o navigator.webdriver. mesmo
 assim, se o site mudar a defesa, o scraper pode voltar a falhar, e
 nesse caso o html da pagina e salvo em debug_livelo.html para
 facilitar o diagnostico.
+
+sobre o timeout "esperando o seletor de parceiro aparecer", as causas
+mais comuns sao, nesta ordem, um banner de cookies bloqueando a
+renderizacao da lista, o site detectando o navegador automatizado e
+travando o carregamento, ou o layout tendo mudado de fato. por isso a
+funcao abaixo tenta fechar banners de cookies conhecidos, tenta
+carregar a pagina mais de uma vez antes de desistir, e so levanta erro
+depois de esgotar essas tentativas.
 """
 
 import re
@@ -42,11 +50,23 @@ SCRIPT_ANTI_DETECCAO = """
 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 """
 
+# seletores de botoes de banner de cookies conhecidos, testados nesta
+# ordem, so o primeiro que existir na pagina e clicado
+SELETORES_BANNER_COOKIES = [
+    "#onetrust-accept-btn-handler",
+    "button#onetrust-accept-btn-handler",
+    "button[aria-label*='aceitar' i]",
+    "button:has-text('Aceitar')",
+    "button:has-text('aceitar todos')",
+]
+
 PADRAO_CODIGO = re.compile(r"/parceiros/[^/]+/([A-Za-z0-9]+)$")
 PADRAO_PONTOS = re.compile(r"(\d+)\s*ponto[s]?\s*por\s*(r\$|u\$)\s*([\d.,]+)", re.IGNORECASE)
 PADRAO_EM_PROMOCAO = re.compile(r"^\s*(promoção|nova)", re.IGNORECASE)
 PADRAO_ERAM = re.compile(r"eram\s*(\d+)\s*ponto[s]?", re.IGNORECASE)
 PADRAO_NOME = re.compile(r"logo\s+(.*?)(?=\s*(?:até\s*)?\d+\s*ponto)", re.IGNORECASE)
+
+SELETOR_LINK_PARCEIRO = 'a[href*="/juntar-pontos/parceiros/"]'
 
 
 @dataclass
@@ -122,17 +142,71 @@ def _extrair_parceiro(href, texto_completo):
     )
 
 
-def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_falha=True):
+def _fechar_banner_cookies(pagina):
+    """
+    tenta fechar um banner de cookies conhecido, sem quebrar o fluxo
+    caso nenhum apareca. um banner desses e uma das causas mais
+    comuns do seletor de parceiro nunca aparecer, porque ele fica por
+    cima da lista e impede a rolagem de carregar mais itens.
+    """
+    for seletor in SELETORES_BANNER_COOKIES:
+        try:
+            botao = pagina.locator(seletor).first
+            if botao.is_visible(timeout=2000):
+                botao.click(timeout=2000)
+                pagina.wait_for_timeout(500)
+                return
+        except Exception:
+            continue
+
+
+def _tentar_carregar_parceiros(pagina, timeout_ms):
+    """
+    faz uma tentativa completa de carregar e rolar a pagina de
+    parceiros, devolvendo a lista de elementos de link encontrados.
+    pode devolver uma lista vazia, quem decide se isso e uma falha e
+    quem chama esta funcao.
+    """
+    pagina.goto(URL_PARCEIROS, timeout=timeout_ms, wait_until="domcontentloaded")
+
+    _fechar_banner_cookies(pagina)
+
+    try:
+        pagina.wait_for_selector(SELETOR_LINK_PARCEIRO, timeout=timeout_ms, state="attached")
+    except Exception:
+        return []
+
+    # rola a pagina algumas vezes, alguns sites so renderizam a
+    # lista completa conforme o usuario rola a tela
+    altura_anterior = 0
+    for _ in range(20):
+        pagina.mouse.wheel(0, 2000)
+        pagina.wait_for_timeout(300)
+        altura_atual = pagina.evaluate("document.body.scrollHeight")
+        if altura_atual == altura_anterior:
+            break
+        altura_anterior = altura_atual
+
+    return pagina.query_selector_all(SELETOR_LINK_PARCEIRO)
+
+
+def buscar_parceiros_livelo(timeout_ms=90000, headless=True, salvar_debug_em_falha=True, tentativas=2):
     """
     abre a pagina publica de parceiros da livelo num navegador e
     devolve a lista completa de parceiros encontrados. nao faz login,
     nao acessa conta nenhuma.
 
-    se nao encontrar nenhum link de parceiro dentro do tempo limite, e
-    salvar_debug_em_falha estiver ligado, salva o html da pagina em
-    scrapers/debug_livelo.html para facilitar o diagnostico.
+    tenta ate "tentativas" vezes antes de desistir, porque um
+    carregamento que falha na primeira vez, por lentidao da rede ou
+    por um banner de cookies, costuma funcionar na segunda.
+
+    se ainda assim nao encontrar nenhum link de parceiro dentro do
+    tempo limite, e salvar_debug_em_falha estiver ligado, salva o
+    html da pagina em scrapers/debug_livelo.html para facilitar o
+    diagnostico.
     """
-    parceiros_brutos = []
+    links = []
+    ultima_pagina_html = ""
 
     with sync_playwright() as playwright:
         navegador = playwright.chromium.launch(
@@ -148,51 +222,44 @@ def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_fal
         pagina = contexto.new_page()
 
         try:
-            pagina.goto(URL_PARCEIROS, timeout=timeout_ms, wait_until="domcontentloaded")
-
-            try:
-                pagina.wait_for_selector(
-                    'a[href*="/juntar-pontos/parceiros/"]',
-                    timeout=timeout_ms,
-                    state="attached",
-                )
-            except Exception as erro_espera:
-                if salvar_debug_em_falha:
-                    CAMINHO_DEBUG_HTML.write_text(pagina.content(), encoding="utf-8")
-                raise ErroScraperLivelo(
-                    "a pagina abriu, mas nenhum parceiro apareceu a tempo. isso "
-                    "costuma acontecer quando o site bloqueia o navegador "
-                    "automatizado ou muda o layout. o html da pagina foi salvo em "
-                    f"{CAMINHO_DEBUG_HTML} para voce conferir o que veio."
-                ) from erro_espera
-
-            # rola a pagina algumas vezes, alguns sites so renderizam a
-            # lista completa conforme o usuario rola a tela
-            altura_anterior = 0
-            for _ in range(15):
-                pagina.mouse.wheel(0, 2000)
-                pagina.wait_for_timeout(300)
-                altura_atual = pagina.evaluate("document.body.scrollHeight")
-                if altura_atual == altura_anterior:
+            for tentativa in range(1, tentativas + 1):
+                links = _tentar_carregar_parceiros(pagina, timeout_ms)
+                ultima_pagina_html = pagina.content()
+                if links:
                     break
-                altura_anterior = altura_atual
-
-            links = pagina.query_selector_all('a[href*="/juntar-pontos/parceiros/"]')
-            for link in links:
-                href = link.get_attribute("href") or ""
-                texto = link.inner_text()
-                parceiro = _extrair_parceiro(href, texto)
-                if parceiro:
-                    parceiros_brutos.append(parceiro)
         finally:
             contexto.close()
             navegador.close()
 
+    if not links:
+        if salvar_debug_em_falha and ultima_pagina_html:
+            CAMINHO_DEBUG_HTML.write_text(ultima_pagina_html, encoding="utf-8")
+        raise ErroScraperLivelo(
+            "a pagina abriu, mas nenhum parceiro apareceu a tempo, mesmo depois de "
+            f"{tentativas} tentativa(s). isso costuma acontecer quando o site "
+            "bloqueia o navegador automatizado, mostra um banner novo por cima da "
+            "lista, ou muda o layout. o html da pagina foi salvo em "
+            f"{CAMINHO_DEBUG_HTML} para voce conferir o que veio. se o html "
+            "mostrar a lista de parceiros normalmente, o motivo mais provavel e o "
+            "seletor a[href*=\"/juntar-pontos/parceiros/\"] ter mudado."
+        )
+
+    parceiros_brutos = []
+    for link in links:
+        href = link.get_attribute("href") or ""
+        texto = link.inner_text()
+        parceiro = _extrair_parceiro(href, texto)
+        if parceiro:
+            parceiros_brutos.append(parceiro)
+
     if not parceiros_brutos:
+        if salvar_debug_em_falha and ultima_pagina_html:
+            CAMINHO_DEBUG_HTML.write_text(ultima_pagina_html, encoding="utf-8")
         raise ErroScraperLivelo(
             "a pagina carregou e tinha links de parceiro, mas nenhum foi "
             "reconhecido. o layout provavelmente mudou, revise as expressoes "
-            "regulares em scrapers/livelo.py"
+            "regulares em scrapers/livelo.py, o html foi salvo em "
+            f"{CAMINHO_DEBUG_HTML}"
         )
 
     vistos = set()

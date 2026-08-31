@@ -5,12 +5,18 @@ o fluxo, escolher ou criar um produto, cadastrar as ofertas
 disponiveis (online, parceiro de pontos, loja fisica ou negociacao),
 e ver o ranking pelo preco efetivo com o detalhamento de cada
 componente.
+
+sobre pontos e milhas, o valor dos pontos de cada oferta e calculado
+pelo metodo do milheiro, juntando os pontos do site parceiro (livelo
+ou esfera) com os pontos ganhos direto no cartao selecionado, ver
+engine/price_engine.py para o passo a passo da conta.
 """
 
 import streamlit as st
 
 from database import db
-from engine.price_engine import Oferta, ranquear_ofertas
+from engine.price_engine import Oferta, ranquear_ofertas, simular_parcelamento
+from utils.ui import renderizar_grafico_linha_svg
 
 st.set_page_config(page_title="Calculadora", layout="wide")
 
@@ -59,6 +65,9 @@ st.header("2. Adicione uma oferta")
 parceiros_livelo = db.listar_parceiros_livelo()
 nomes_parceiros = [parceiro["nome"] for parceiro in parceiros_livelo]
 
+cartoes_cadastrados = db.listar_cartoes()
+nomes_cartoes = [cartao["nome"] for cartao in cartoes_cadastrados]
+
 with st.form("form_oferta", clear_on_submit=True):
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -71,27 +80,53 @@ with st.form("form_oferta", clear_on_submit=True):
         parcelas = st.number_input("numero de parcelas", min_value=1, max_value=24, value=1)
         frete = st.number_input("frete (r$)", min_value=0.0, step=10.0)
 
-    st.subheader("pontos e cashback")
+    st.subheader("pontos e milhas")
+    st.caption(
+        "o valor dos pontos e calculado pelo metodo do milheiro, somando os "
+        "pontos do site parceiro com os pontos do cartao selecionado."
+    )
     col4, col5, col6 = st.columns(3)
     with col4:
-        parceiro_selecionado = st.selectbox("preencher pontos a partir de um parceiro livelo", ["nenhum"] + nomes_parceiros)
+        parceiro_selecionado = st.selectbox(
+            "parceiro livelo ou esfera", ["nenhum"] + nomes_parceiros,
+        )
         if parceiro_selecionado != "nenhum":
             parceiro_info = next(p for p in parceiros_livelo if p["nome"] == parceiro_selecionado)
             pontos_por_real_padrao = float(parceiro_info["pontos_padrao"])
-            moeda_padrao = parceiro_info["moeda_padrao"]
         else:
             pontos_por_real_padrao = 0.0
-            moeda_padrao = "R$"
         pontos_por_real = st.number_input(
-            "pontos por unidade de moeda", min_value=0.0, value=pontos_por_real_padrao, step=0.5,
+            "pontos por real no site parceiro", min_value=0.0, value=pontos_por_real_padrao, step=0.5,
         )
     with col5:
-        moeda_pontos = st.selectbox("moeda dos pontos", ["R$", "U$"], index=0 if moeda_padrao == "R$" else 1)
-        valor_ponto = st.number_input(
-            "valor do ponto (r$)", min_value=0.0, value=float(config["valor_livelo"]), step=0.001, format="%.3f",
+        cartao_selecionado = st.selectbox(
+            "cartao usado na compra", ["nenhum"] + nomes_cartoes,
         )
+        if cartao_selecionado != "nenhum":
+            cartao_info = next(c for c in cartoes_cadastrados if c["nome"] == cartao_selecionado)
+            pontos_dolar_cartao_padrao = float(cartao_info["pontos_por_dolar"])
+            cashback_padrao = float(cartao_info["cashback_pct"])
+        else:
+            pontos_dolar_cartao_padrao = float(config["pontos_dolar_cartao_padrao"])
+            cashback_padrao = 0.0
+        pontos_por_dolar_cartao = st.number_input(
+            "pontos por dolar no cartao", min_value=0.0, value=pontos_dolar_cartao_padrao, step=0.5,
+        )
+        cashback_pct = st.number_input("cashback do cartao (%)", min_value=0.0, value=cashback_padrao, step=0.5)
     with col6:
-        cashback_pct = st.number_input("cashback (%)", min_value=0.0, step=0.5)
+        percentual_bonus_transferencia = st.number_input(
+            "bonus de transferencia para milhas (%)",
+            min_value=0.0,
+            value=0.0,
+            step=5.0,
+            help="bonus vigente na promocao de transferencia para tudo azul, smiles ou latampass",
+        )
+        valor_milheiro = st.number_input(
+            "valor do milheiro (r$)",
+            min_value=0.0,
+            value=float(config["valor_milheiro_padrao"]),
+            step=1.0,
+        )
         cupom = st.number_input("cupom de desconto (r$)", min_value=0.0, step=10.0)
 
     st.subheader("detalhes extras")
@@ -114,13 +149,14 @@ with st.form("form_oferta", clear_on_submit=True):
                 preco_cartao=preco_cartao,
                 parcelas=int(parcelas),
                 pontos_por_real=pontos_por_real,
-                valor_ponto=valor_ponto,
-                moeda_pontos=moeda_pontos,
                 cotacao_dolar=float(config["cotacao_dolar"]),
                 cashback_pct=cashback_pct,
                 frete=frete,
                 cupom=cupom,
                 tipo=tipo,
+                pontos_por_dolar_cartao=pontos_por_dolar_cartao,
+                percentual_bonus_transferencia=percentual_bonus_transferencia,
+                valor_milheiro=valor_milheiro,
             )
             resultado = ranquear_ofertas([oferta], float(config["cdi_mensal"]))[0]
 
@@ -132,8 +168,9 @@ with st.form("form_oferta", clear_on_submit=True):
                 preco_cartao=oferta.preco_cartao,
                 parcelas=oferta.parcelas,
                 pontos_por_real=oferta.pontos_por_real,
-                valor_ponto=oferta.valor_ponto,
-                moeda_pontos=oferta.moeda_pontos,
+                pontos_por_dolar_cartao=oferta.pontos_por_dolar_cartao,
+                percentual_bonus_transferencia=oferta.percentual_bonus_transferencia,
+                valor_milheiro=oferta.valor_milheiro,
                 cashback_pct=oferta.cashback_pct,
                 frete=oferta.frete,
                 cupom=oferta.cupom,
@@ -161,13 +198,14 @@ ofertas_para_calculo = [
         preco_cartao=oferta["preco_cartao"],
         parcelas=oferta["parcelas"],
         pontos_por_real=oferta["pontos_por_real"],
-        valor_ponto=oferta["valor_ponto"],
-        moeda_pontos=oferta["moeda_pontos"],
         cotacao_dolar=float(config["cotacao_dolar"]),
         cashback_pct=oferta["cashback_pct"],
         frete=oferta["frete"],
         cupom=oferta["cupom"],
         tipo=oferta["tipo"],
+        pontos_por_dolar_cartao=oferta["pontos_por_dolar_cartao"],
+        percentual_bonus_transferencia=oferta["percentual_bonus_transferencia"],
+        valor_milheiro=oferta["valor_milheiro"],
     )
     for oferta in ofertas_salvas
 ]
@@ -187,14 +225,14 @@ for posicao, resultado in enumerate(ranking):
         with col1:
             st.markdown("**pagando no pix**")
             st.write(f"preco pix, r$ {resultado.preco_efetivo_pix + resultado.pontos_valor_pix + resultado.cashback_valor_pix:.2f}")
-            st.write(f"valor dos pontos, -r$ {resultado.pontos_valor_pix:.2f}")
+            st.write(f"valor dos pontos/milhas, -r$ {resultado.pontos_valor_pix:.2f}")
             st.write(f"cashback, -r$ {resultado.cashback_valor_pix:.2f}")
             st.write(f"preco efetivo pix, r$ {resultado.preco_efetivo_pix:.2f}")
         with col2:
             st.markdown("**pagando parcelado no cartao**")
             st.write(f"preco anunciado, r$ {resultado.preco_anunciado:.2f}")
             st.write(f"rendimento do parcelamento, -r$ {resultado.rendimento_parcelamento:.2f}")
-            st.write(f"valor dos pontos, -r$ {resultado.pontos_valor_cartao:.2f}")
+            st.write(f"valor dos pontos/milhas, -r$ {resultado.pontos_valor_cartao:.2f}")
             st.write(f"cashback, -r$ {resultado.cashback_valor_cartao:.2f}")
             st.write(f"preco efetivo cartao, r$ {resultado.preco_efetivo_cartao:.2f}")
 
@@ -203,15 +241,12 @@ for posicao, resultado in enumerate(ranking):
 st.header("4. Simulador, a partir de quantas parcelas compensa")
 
 if ofertas_salvas:
-    from engine.price_engine import simular_parcelamento
-
     oferta_base = ofertas_para_calculo[0]
     simulacao = simular_parcelamento(
         oferta_base.preco_pix, oferta_base.preco_cartao, float(config["cdi_mensal"]), max_parcelas=12,
     )
-    st.line_chart(
-        {"parcelas": [linha["parcelas"] for linha in simulacao], "custo efetivo": [linha["custo_efetivo"] for linha in simulacao]},
-        x="parcelas",
-        y="custo efetivo",
+    renderizar_grafico_linha_svg(
+        rotulos=[f"{linha['parcelas']}x" for linha in simulacao],
+        valores=[linha["custo_efetivo"] for linha in simulacao],
     )
     st.caption(f"simulacao baseada na primeira oferta cadastrada, {oferta_base.loja}")

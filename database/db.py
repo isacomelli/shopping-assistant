@@ -4,6 +4,12 @@ camada de acesso ao banco sqlite do assistente de compras.
 todas as tabelas ja possuem a coluna user_id, mesmo que hoje so exista
 um unico usuario local, justamente para facilitar uma eventual
 migracao para um servico multiusuario na nuvem no futuro.
+
+sobre migracao de esquema, como o banco ja existe no disco de quem ja
+usava o app antes, nao da pra so mudar o CREATE TABLE, ele so roda na
+primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE
+dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja
+existe.
 """
 
 import sqlite3
@@ -13,6 +19,9 @@ from pathlib import Path
 CAMINHO_BANCO = Path(__file__).parent / "shopping.db"
 
 USER_ID_PADRAO = 1
+
+VALOR_MILHEIRO_PADRAO = 15.0
+PONTOS_DOLAR_CARTAO_PADRAO = 3.0
 
 
 @contextmanager
@@ -25,6 +34,39 @@ def conexao():
         conn.commit()
     finally:
         conn.close()
+
+
+def _adicionar_coluna_se_nao_existir(conn, tabela, definicao_coluna):
+    """
+    tenta adicionar uma coluna nova numa tabela ja existente, e
+    ignora o erro caso a coluna ja tenha sido criada numa execucao
+    anterior. e assim que o sqlite migra esquema em bancos que ja
+    estao em uso.
+    """
+    nome_coluna = definicao_coluna.split()[0]
+    try:
+        conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {definicao_coluna}")
+    except sqlite3.OperationalError as erro:
+        if "duplicate column name" not in str(erro).lower():
+            raise
+
+
+def _migrar_colunas_novas(conn):
+    _adicionar_coluna_se_nao_existir(
+        conn, "user_settings", f"valor_milheiro_padrao REAL NOT NULL DEFAULT {VALOR_MILHEIRO_PADRAO}",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "user_settings", f"pontos_dolar_cartao_padrao REAL NOT NULL DEFAULT {PONTOS_DOLAR_CARTAO_PADRAO}",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "pontos_por_dolar_cartao REAL NOT NULL DEFAULT 0",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "percentual_bonus_transferencia REAL NOT NULL DEFAULT 0",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "valor_milheiro REAL NOT NULL DEFAULT 0",
+    )
 
 
 def inicializar_banco():
@@ -109,6 +151,8 @@ def inicializar_banco():
             """
         )
 
+        _migrar_colunas_novas(conn)
+
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
             (USER_ID_PADRAO,),
@@ -125,16 +169,21 @@ def obter_configuracoes():
         return dict(linha)
 
 
-def salvar_configuracoes(cdi_mensal, valor_livelo, valor_esfera, cotacao_dolar, orcamento_mudanca):
+def salvar_configuracoes(cdi_mensal, cotacao_dolar, valor_milheiro_padrao, pontos_dolar_cartao_padrao):
+    """
+    salva o perfil financeiro. o orcamento total da mudanca e o valor
+    fixo por ponto livelo/esfera nao fazem mais parte deste formulario,
+    o calculo de pontos agora e feito por milheiro, ver engine/price_engine.py.
+    """
     with conexao() as conn:
         conn.execute(
             """
             UPDATE user_settings
-            SET cdi_mensal = ?, valor_livelo = ?, valor_esfera = ?,
-                cotacao_dolar = ?, orcamento_mudanca = ?, atualizado_em = CURRENT_TIMESTAMP
+            SET cdi_mensal = ?, cotacao_dolar = ?, valor_milheiro_padrao = ?,
+                pontos_dolar_cartao_padrao = ?, atualizado_em = CURRENT_TIMESTAMP
             WHERE user_id = ?
             """,
-            (cdi_mensal, valor_livelo, valor_esfera, cotacao_dolar, orcamento_mudanca, USER_ID_PADRAO),
+            (cdi_mensal, cotacao_dolar, valor_milheiro_padrao, pontos_dolar_cartao_padrao, USER_ID_PADRAO),
         )
 
 
@@ -210,20 +259,23 @@ def listar_ofertas_por_produto(produto_id):
 
 
 def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
-                      pontos_por_real, valor_ponto, moeda_pontos, cashback_pct,
-                      frete, cupom, observacoes, validade, confianca, preco_efetivo):
+                      pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                      valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
+                      confianca, preco_efetivo):
     with conexao() as conn:
         conn.execute(
             """
             INSERT INTO ofertas (
                 produto_id, user_id, loja, tipo, preco_pix, preco_cartao, parcelas,
-                pontos_por_real, valor_ponto, moeda_pontos, cashback_pct, frete, cupom,
+                pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                valor_milheiro, cashback_pct, frete, cupom,
                 observacoes, validade, confianca, preco_efetivo
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 produto_id, USER_ID_PADRAO, loja, tipo, preco_pix, preco_cartao, parcelas,
-                pontos_por_real, valor_ponto, moeda_pontos, cashback_pct, frete, cupom,
+                pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                valor_milheiro, cashback_pct, frete, cupom,
                 observacoes, validade, confianca, preco_efetivo,
             ),
         )

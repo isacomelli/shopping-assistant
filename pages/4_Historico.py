@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import streamlit as st
 
 from database import db
+from utils.ui import renderizar_grafico_linha_svg, renderizar_tabela_html
 
 
 def _tentar_converter_data(texto):
@@ -43,13 +44,9 @@ if not historico:
     st.info("ainda nao ha historico registrado para este produto, cadastre ofertas na calculadora")
     st.stop()
 
-st.line_chart(
-    {
-        "data": [linha["registrado_em"] for linha in historico],
-        "preco efetivo": [linha["preco_efetivo"] for linha in historico],
-    },
-    x="data",
-    y="preco efetivo",
+renderizar_grafico_linha_svg(
+    rotulos=[linha["registrado_em"] for linha in historico],
+    valores=[linha["preco_efetivo"] for linha in historico],
 )
 
 precos = [linha["preco_efetivo"] for linha in historico if linha["preco_efetivo"] is not None]
@@ -81,7 +78,7 @@ else:
     st.info("preco atual esta na media dos ultimos 30 dias")
 
 st.header("Todas as pesquisas registradas")
-st.dataframe(
+renderizar_tabela_html(
     [
         {
             "data": linha["registrado_em"],
@@ -91,6 +88,10 @@ st.dataframe(
         }
         for linha in reversed(historico)
     ],
-    use_container_width=True,
-    hide_index=True,
+    colunas=[
+        ("data", "data"),
+        ("loja", "loja"),
+        ("preco anunciado", "preco anunciado"),
+        ("preco efetivo", "preco efetivo"),
+    ],
 )

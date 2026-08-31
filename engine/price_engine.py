@@ -7,6 +7,23 @@ scraper ou interface, para poder ser testado isoladamente com pytest.
 a ideia central, dado um preco pix e um preco no cartao parcelado, alem
 de pontos, cashback e cdi, calcular quanto a compra realmente custa
 depois de considerar todos os beneficios envolvidos.
+
+sobre pontos e milhas, existem dois jeitos de estimar o valor dos
+pontos de uma oferta. o primeiro, mais antigo, e informar diretamente
+quanto vale cada ponto em reais, atraves de valor_ponto. o segundo,
+mais fiel a forma como voce realmente usa livelo, esfera e cartao xp,
+e o calculo por milheiro, descrito logo abaixo, que reproduz a mesma
+conta feita antes numa planilha.
+
+calculo por milheiro, passo a passo
+pontos acumulados no site parceiro = pontos por real x valor da compra
+pontos acumulados no cartao = (valor da compra / cotacao do dolar) x pontos por dolar do cartao
+milhas do site parceiro, com bonus de transferencia = pontos do site parceiro x (1 + bonus)
+milhas totais = milhas do site parceiro com bonus + pontos acumulados no cartao
+valor em milhas = (valor do milheiro x milhas totais) / 1000
+
+quando uma oferta tem valor_milheiro maior que zero, o calculo de
+pontos passa a usar esse metodo em vez do valor_ponto fixo.
 """
 
 from dataclasses import dataclass, field
@@ -32,6 +49,11 @@ class Oferta:
     cupom: float = 0.0
     tipo: str = "online"
     observacoes: str = ""
+
+    # campos do calculo por milheiro, ver docstring do modulo
+    pontos_por_dolar_cartao: float = 0.0
+    percentual_bonus_transferencia: float = 0.0
+    valor_milheiro: float = 0.0
 
 
 @dataclass
@@ -93,7 +115,8 @@ def calcular_rendimento_parcelamento(preco_cartao, parcelas, cdi_mensal_pct):
 
 def calcular_valor_pontos(base_valor, pontos_por_real, valor_ponto, moeda_pontos="R$", cotacao_dolar=1.0):
     """
-    calcula quanto valem, em reais, os pontos ganhos numa compra.
+    calcula quanto valem, em reais, os pontos ganhos numa compra,
+    a partir de um valor fixo por ponto.
 
     se o programa pontua por dolar de turismo, a base e convertida
     antes de multiplicar pela taxa de pontos.
@@ -107,6 +130,100 @@ def calcular_valor_pontos(base_valor, pontos_por_real, valor_ponto, moeda_pontos
 
     pontos_ganhos = base * pontos_por_real
     return pontos_ganhos * valor_ponto
+
+
+def calcular_pontos_parceiro(base_valor, pontos_por_real):
+    """
+    pontos acumulados no site parceiro, tipo livelo ou esfera,
+    aplicando a taxa de pontos por real sobre o valor da compra.
+    """
+    if pontos_por_real <= 0:
+        return 0.0
+    return base_valor * pontos_por_real
+
+
+def calcular_pontos_cartao(base_valor, cotacao_dolar, pontos_por_dolar_cartao):
+    """
+    pontos acumulados direto no cartao de credito, convertendo o
+    valor da compra para dolar antes de aplicar a taxa por dolar
+    gasto.
+    """
+    if pontos_por_dolar_cartao <= 0 or cotacao_dolar <= 0:
+        return 0.0
+    return (base_valor / cotacao_dolar) * pontos_por_dolar_cartao
+
+
+def calcular_milhas_totais(pontos_parceiro, pontos_cartao, percentual_bonus):
+    """
+    milhas totais depois de transferir os pontos do site parceiro
+    para o programa de milhas com bonus de transferencia, somadas
+    aos pontos ganhos direto no cartao.
+
+    como o cartao costuma ter parceria direta com o programa de
+    pontos, os pontos do cartao entram sem o bonus de transferencia,
+    reproduzindo a mesma conta feita antes na planilha.
+    """
+    milhas_parceiro_bonificadas = pontos_parceiro * (1 + percentual_bonus / 100)
+    return milhas_parceiro_bonificadas + pontos_cartao
+
+
+def calcular_valor_em_milhas(milhas_totais, valor_milheiro):
+    """
+    valor em reais de um total de milhas, dado o valor estimado do
+    milheiro.
+    """
+    if valor_milheiro <= 0:
+        return 0.0
+    return (valor_milheiro * milhas_totais) / 1000
+
+
+def calcular_valor_pontos_por_milhas(
+    base_valor,
+    pontos_por_real,
+    cotacao_dolar,
+    pontos_por_dolar_cartao,
+    percentual_bonus,
+    valor_milheiro,
+):
+    """
+    estima quanto vale, em reais, o total de milhas geradas por uma
+    compra, juntando os pontos do site parceiro, ja com o bonus de
+    transferencia, com os pontos ganhos direto no cartao de credito.
+
+    esse e o metodo recomendado para livelo, esfera e cartoes com
+    parceria de milhas, veja a docstring do modulo para o passo a
+    passo completo.
+    """
+    if valor_milheiro <= 0:
+        return 0.0
+
+    pontos_parceiro = calcular_pontos_parceiro(base_valor, pontos_por_real)
+    pontos_cartao = calcular_pontos_cartao(base_valor, cotacao_dolar, pontos_por_dolar_cartao)
+    milhas_totais = calcular_milhas_totais(pontos_parceiro, pontos_cartao, percentual_bonus)
+
+    return calcular_valor_em_milhas(milhas_totais, valor_milheiro)
+
+
+def _calcular_valor_pontos_da_oferta(oferta, base_valor):
+    """
+    escolhe o metodo de calculo dos pontos de uma oferta, por
+    milheiro quando valor_milheiro estiver preenchido, ou pelo valor
+    fixo por ponto caso contrario.
+    """
+    if oferta.valor_milheiro > 0:
+        return calcular_valor_pontos_por_milhas(
+            base_valor,
+            oferta.pontos_por_real,
+            oferta.cotacao_dolar,
+            oferta.pontos_por_dolar_cartao,
+            oferta.percentual_bonus_transferencia,
+            oferta.valor_milheiro,
+        )
+
+    return calcular_valor_pontos(
+        base_valor, oferta.pontos_por_real, oferta.valor_ponto,
+        oferta.moeda_pontos, oferta.cotacao_dolar,
+    )
 
 
 def calcular_valor_cashback(base_valor, cashback_pct):
@@ -126,10 +243,7 @@ def calcular_oferta(oferta: Oferta, cdi_mensal_pct: float) -> ResultadoOferta:
     """
     preco_anunciado = oferta.preco_cartao
 
-    pontos_valor_pix = calcular_valor_pontos(
-        oferta.preco_pix, oferta.pontos_por_real, oferta.valor_ponto,
-        oferta.moeda_pontos, oferta.cotacao_dolar,
-    )
+    pontos_valor_pix = _calcular_valor_pontos_da_oferta(oferta, oferta.preco_pix)
     cashback_valor_pix = calcular_valor_cashback(oferta.preco_pix, oferta.cashback_pct)
     preco_efetivo_pix = (
         oferta.preco_pix - pontos_valor_pix - cashback_valor_pix + oferta.frete - oferta.cupom
@@ -138,10 +252,7 @@ def calcular_oferta(oferta: Oferta, cdi_mensal_pct: float) -> ResultadoOferta:
     rendimento_parcelamento = calcular_rendimento_parcelamento(
         oferta.preco_cartao, oferta.parcelas, cdi_mensal_pct,
     )
-    pontos_valor_cartao = calcular_valor_pontos(
-        oferta.preco_cartao, oferta.pontos_por_real, oferta.valor_ponto,
-        oferta.moeda_pontos, oferta.cotacao_dolar,
-    )
+    pontos_valor_cartao = _calcular_valor_pontos_da_oferta(oferta, oferta.preco_cartao)
     cashback_valor_cartao = calcular_valor_cashback(oferta.preco_cartao, oferta.cashback_pct)
     preco_efetivo_cartao = (
         oferta.preco_cartao
