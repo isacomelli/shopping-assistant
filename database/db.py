@@ -10,9 +10,17 @@ usava o app antes, nao da pra so mudar o CREATE TABLE, ele so roda na
 primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE
 dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja
 existe.
+
+sobre a tabela livelo_parceiros, ela nao e mais alimentada por um
+scraper automatico. o site da livelo bloqueia qualquer acesso
+automatizado a nivel de dominio, atraves do akamai, entao a tabela
+agora e mantida por cadastro manual, feito uma vez por parceiro em
+app.py e reaproveitado pela pesquisa automatica em services/pesquisa_produto.py.
 """
 
+import re
 import sqlite3
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -294,9 +302,55 @@ def listar_historico(produto_id):
         return [dict(linha) for linha in linhas]
 
 
-# parceiros livelo
+# parceiros livelo, cadastro manual
+#
+# a tabela nao e mais alimentada por scraper, ver o comentario no topo
+# deste arquivo. o codigo de cada parceiro manual e gerado a partir do
+# nome, para o cadastro poder ser atualizado depois pelo mesmo nome.
+
+def _slug_parceiro_manual(nome):
+    forma_normalizada = unicodedata.normalize("NFKD", nome)
+    sem_acento = "".join(c for c in forma_normalizada if not unicodedata.combining(c))
+    sem_acento = re.sub(r"[^a-zA-Z0-9\s]", "", sem_acento).strip().upper()
+    return "MANUAL-" + re.sub(r"\s+", "-", sem_acento)
+
+
+def adicionar_parceiro_livelo_manual(nome, pontos_padrao, moeda_padrao="R$"):
+    """
+    cadastra ou atualiza, pelo nome, um parceiro livelo com a taxa de
+    pontos por real ou por dolar informada a mao. e o unico jeito
+    confiavel de manter esta tabela hoje, ja que o site da livelo
+    bloqueia qualquer scraping automatizado.
+    """
+    codigo = _slug_parceiro_manual(nome)
+    with conexao() as conn:
+        conn.execute(
+            """
+            INSERT INTO livelo_parceiros (
+                codigo, nome, url, pontos_padrao, moeda_padrao,
+                pontos_clube, em_promocao, pontos_anteriores, atualizado_em
+            ) VALUES (?, ?, '', ?, ?, 0, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(codigo) DO UPDATE SET
+                nome = excluded.nome,
+                pontos_padrao = excluded.pontos_padrao,
+                moeda_padrao = excluded.moeda_padrao,
+                atualizado_em = CURRENT_TIMESTAMP
+            """,
+            (codigo, nome.strip(), pontos_padrao, moeda_padrao),
+        )
+        return codigo
+
+
+def remover_parceiro_livelo(codigo):
+    with conexao() as conn:
+        conn.execute("DELETE FROM livelo_parceiros WHERE codigo = ?", (codigo,))
+
 
 def salvar_parceiros_livelo(parceiros):
+    """
+    mantido para compatibilidade, caso algum script antigo ainda
+    chame esta funcao passando objetos ParceiroLivelo completos.
+    """
     with conexao() as conn:
         for parceiro in parceiros:
             conn.execute(

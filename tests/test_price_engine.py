@@ -46,15 +46,9 @@ def test_valor_pontos_fixo_zero_sem_taxa_ou_sem_valor_do_ponto():
 
 
 def test_valor_milhas_pix_nao_soma_pontos_de_cartao():
-    """
-    no pix nao existe cartao envolvido, entao o valor das milhas so
-    considera o site parceiro, mesmo que a oferta tenha uma taxa de
-    pontos por dolar no cartao cadastrada.
-    """
     valor_pix = calcular_valor_milhas_pix(
         base_valor=1000, pontos_por_real=10, percentual_bonus=0, valor_milheiro=15,
     )
-    # 1000 * 10 = 10000 pontos, sem bonus, valor = (15 * 10000) / 1000 = 150
     assert valor_pix == 150.0
 
 
@@ -63,10 +57,6 @@ def test_valor_milhas_cartao_soma_pontos_parceiro_e_pontos_cartao():
         base_valor=1000, pontos_por_real=10, cotacao_dolar=5.0,
         pontos_por_dolar_cartao=3, percentual_bonus=0, valor_milheiro=15,
     )
-    # pontos parceiro, 1000 * 10 = 10000
-    # pontos cartao, (1000 / 5) * 3 = 600
-    # milhas totais, 10600
-    # valor, (15 * 10600) / 1000 = 159
     assert valor_cartao == 159.0
 
 
