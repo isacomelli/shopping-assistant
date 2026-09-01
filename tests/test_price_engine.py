@@ -8,7 +8,9 @@ from engine.price_engine import (
     calcular_oferta,
     calcular_rendimento_parcelamento,
     calcular_valor_cashback,
-    calcular_valor_pontos,
+    calcular_valor_milhas_cartao,
+    calcular_valor_milhas_pix,
+    calcular_valor_pontos_fixo,
     ranquear_ofertas,
     simular_parcelamento,
     valor_presente_parcelas,
@@ -34,26 +36,50 @@ def test_rendimento_parcelamento_positivo_para_varias_parcelas():
     assert rendimento > 0
 
 
-def test_valor_pontos_em_reais():
-    valor = calcular_valor_pontos(1000, pontos_por_real=10, valor_ponto=0.025)
-    assert valor == 1000 * 10 * 0.025
-
-
-def test_valor_pontos_em_dolar_converte_pela_cotacao():
-    valor_em_real = calcular_valor_pontos(
-        1000, pontos_por_real=3, valor_ponto=0.025, moeda_pontos="U$", cotacao_dolar=5.0,
-    )
-    valor_esperado = (1000 / 5.0) * 3 * 0.025
-    assert round(valor_em_real, 4) == round(valor_esperado, 4)
-
-
-def test_valor_pontos_zero_sem_taxa_ou_sem_valor_do_ponto():
-    assert calcular_valor_pontos(1000, 0, 0.025) == 0.0
-    assert calcular_valor_pontos(1000, 10, 0) == 0.0
-
-
 def test_cashback_calcula_percentual_sobre_o_valor_pago():
     assert calcular_valor_cashback(1000, 8) == 80
+
+
+def test_valor_pontos_fixo_zero_sem_taxa_ou_sem_valor_do_ponto():
+    assert calcular_valor_pontos_fixo(1000, 0, 0.025) == 0.0
+    assert calcular_valor_pontos_fixo(1000, 10, 0) == 0.0
+
+
+def test_valor_milhas_pix_nao_soma_pontos_de_cartao():
+    """
+    no pix nao existe cartao envolvido, entao o valor das milhas so
+    considera o site parceiro, mesmo que a oferta tenha uma taxa de
+    pontos por dolar no cartao cadastrada.
+    """
+    valor_pix = calcular_valor_milhas_pix(
+        base_valor=1000, pontos_por_real=10, percentual_bonus=0, valor_milheiro=15,
+    )
+    # 1000 * 10 = 10000 pontos, sem bonus, valor = (15 * 10000) / 1000 = 150
+    assert valor_pix == 150.0
+
+
+def test_valor_milhas_cartao_soma_pontos_parceiro_e_pontos_cartao():
+    valor_cartao = calcular_valor_milhas_cartao(
+        base_valor=1000, pontos_por_real=10, cotacao_dolar=5.0,
+        pontos_por_dolar_cartao=3, percentual_bonus=0, valor_milheiro=15,
+    )
+    # pontos parceiro, 1000 * 10 = 10000
+    # pontos cartao, (1000 / 5) * 3 = 600
+    # milhas totais, 10600
+    # valor, (15 * 10600) / 1000 = 159
+    assert valor_cartao == 159.0
+
+
+def test_valor_milhas_cartao_maior_que_pix_quando_ha_pontos_no_cartao():
+    valor_pix = calcular_valor_milhas_pix(1000, 10, 0, 15)
+    valor_cartao = calcular_valor_milhas_cartao(1000, 10, 5.0, 3, 0, 15)
+    assert valor_cartao > valor_pix
+
+
+def test_bonus_de_transferencia_aumenta_o_valor_das_milhas():
+    sem_bonus = calcular_valor_milhas_pix(1000, 10, 0, 15)
+    com_bonus = calcular_valor_milhas_pix(1000, 10, 80, 15)
+    assert com_bonus > sem_bonus
 
 
 def test_calcular_oferta_pix_mais_barato_quando_nao_ha_pontos():
@@ -63,20 +89,37 @@ def test_calcular_oferta_pix_mais_barato_quando_nao_ha_pontos():
     assert resultado.preco_efetivo == 900
 
 
-def test_calcular_oferta_cartao_pode_ganhar_com_pontos_e_parcelamento():
+def test_calcular_oferta_usa_milheiro_quando_valor_milheiro_preenchido():
     oferta = Oferta(
-        loja="amazon",
-        preco_pix=2279,
-        preco_cartao=2399,
-        parcelas=10,
+        loja="xp",
+        preco_pix=1571.00,
+        preco_cartao=1651.37,
+        parcelas=1,
+        pontos_por_real=10,
+        cotacao_dolar=5.3,
+        pontos_por_dolar_cartao=3,
+        percentual_bonus_transferencia=80,
+        valor_milheiro=15,
+    )
+    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
+
+    valor_esperado_pix = calcular_valor_milhas_pix(1571.00, 10, 80, 15)
+    valor_esperado_cartao = calcular_valor_milhas_cartao(1651.37, 10, 5.3, 3, 80, 15)
+
+    assert round(resultado.valor_pontos_pix, 4) == round(valor_esperado_pix, 4)
+    assert round(resultado.valor_pontos_cartao, 4) == round(valor_esperado_cartao, 4)
+
+
+def test_calcular_oferta_cai_para_valor_ponto_fixo_sem_milheiro():
+    oferta = Oferta(
+        loja="loja simples",
+        preco_pix=1000,
+        preco_cartao=1000,
         pontos_por_real=10,
         valor_ponto=0.025,
     )
     resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
-
-    assert resultado.pontos_valor_cartao > resultado.pontos_valor_pix
-    assert resultado.rendimento_parcelamento > 0
-    assert resultado.preco_efetivo_cartao < oferta.preco_cartao
+    assert resultado.valor_pontos_pix == 1000 * 10 * 0.025
 
 
 def test_frete_aumenta_e_cupom_diminui_o_preco_efetivo():
@@ -110,40 +153,3 @@ def test_simular_parcelamento_gera_uma_linha_por_quantidade_de_parcelas():
     assert resultado[0]["parcelas"] == 1
     assert resultado[-1]["parcelas"] == 12
     assert resultado[0]["custo_efetivo"] == 779
-
-
-def test_calcular_oferta_usa_milheiro_quando_valor_milheiro_preenchido():
-    from engine.price_engine import calcular_valor_pontos_por_milhas
-
-    oferta = Oferta(
-        loja="xp",
-        preco_pix=1571.00,
-        preco_cartao=1651.37,
-        parcelas=1,
-        pontos_por_real=10,
-        cotacao_dolar=5.3,
-        pontos_por_dolar_cartao=3,
-        percentual_bonus_transferencia=80,
-        valor_milheiro=15,
-    )
-    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
-
-    valor_esperado_pix = calcular_valor_pontos_por_milhas(1571.00, 10, 5.3, 3, 80, 15)
-    valor_esperado_cartao = calcular_valor_pontos_por_milhas(1651.37, 10, 5.3, 3, 80, 15)
-
-    assert round(resultado.pontos_valor_pix, 4) == round(valor_esperado_pix, 4)
-    assert round(resultado.pontos_valor_cartao, 4) == round(valor_esperado_cartao, 4)
-
-
-def test_calcular_oferta_ignora_milheiro_quando_valor_milheiro_zero():
-    oferta = Oferta(
-        loja="loja sem milhas",
-        preco_pix=1000,
-        preco_cartao=1000,
-        pontos_por_real=10,
-        valor_ponto=0.025,
-        pontos_por_dolar_cartao=3,
-        percentual_bonus_transferencia=80,
-    )
-    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
-    assert resultado.pontos_valor_pix == 1000 * 10 * 0.025

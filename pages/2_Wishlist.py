@@ -1,7 +1,7 @@
 """
 pagina da wishlist, a lista de produtos que faltam comprar para o
-apartamento, com orcamento, preco alvo, melhor oferta encontrada e
-status.
+apartamento, com orcamento por item, preco alvo, melhor oferta
+encontrada e status.
 """
 
 import streamlit as st
@@ -14,24 +14,7 @@ db.inicializar_banco()
 
 st.title("Wishlist da Reforma")
 
-config = db.obter_configuracoes()
 produtos = db.listar_produtos()
-
-if config["orcamento_mudanca"] > 0:
-    total_comprado = 0.0
-    for produto in produtos:
-        if produto["status"] == "comprado":
-            ofertas = db.listar_ofertas_por_produto(produto["id"])
-            if ofertas:
-                total_comprado += min(oferta["preco_efetivo"] or 0 for oferta in ofertas)
-
-    st.header("Orçamento Geral da Mudança")
-    proporcao = min(total_comprado / config["orcamento_mudanca"], 1.0)
-    st.progress(proporcao)
-    st.write(
-        f"Comprado, R$ {total_comprado:.2f}, de um orçamento de "
-        f"R$ {config['orcamento_mudanca']:.2f}, restam R$ {max(config['orcamento_mudanca'] - total_comprado, 0):.2f}."
-    )
 
 st.header("Itens da Lista")
 

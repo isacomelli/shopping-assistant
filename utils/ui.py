@@ -29,7 +29,7 @@ def renderizar_tabela_html(linhas, colunas=None):
     chaves do primeiro dicionario, na ordem em que aparecem
     """
     if not linhas:
-        st.info("Nenhum dado para mostrar.")
+        st.info("nenhum dado para mostrar")
         return
 
     if colunas is None:
@@ -77,7 +77,7 @@ def renderizar_grafico_linha_svg(rotulos, valores, altura=220, cor="#4c8bf5"):
     x e valores do eixo y.
     """
     if not valores or len(valores) != len(rotulos):
-        st.info("Sem dados suficientes para desenhar o gráfico.")
+        st.info("sem dados suficientes para desenhar o grafico")
         return
 
     largura = 700
