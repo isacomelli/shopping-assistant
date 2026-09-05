@@ -143,7 +143,7 @@ if resultados_automaticos:
             with col1:
                 st.markdown(f"**{oferta.loja}**")
                 st.caption(rotulo_parceiro)
-                if not resultado_automatico.distincao_pix_cartao_confiavel:
+                if not resultado_automatico.confianca_pix_cartao:
                     st.caption(
                         "não foi possível distinguir preço Pix de preço cartão "
                         "automaticamente, os dois valores abaixo partiram do "

@@ -17,7 +17,7 @@ class OfertaBuscapeFalsa:
     preco: float
     preco_pix: float
     preco_cartao: float
-    distincao_pix_cartao_confiavel: bool = False
+    confianca_pix_cartao: bool = False
 
 
 PARCEIROS_FALSOS = [
@@ -39,7 +39,7 @@ def test_casar_parceiro_livelo_nao_encontra_quando_nao_ha_parceiro():
 
 def test_montar_oferta_usa_pontos_do_parceiro_casado():
     oferta_buscape = OfertaBuscapeFalsa(
-        loja="Amazon", preco=1000, preco_pix=950, preco_cartao=1000, distincao_pix_cartao_confiavel=True,
+        loja="Amazon", preco=1000, preco_pix=950, preco_cartao=1000, confianca_pix_cartao=True,
     )
     oferta, parceiro, distincao_confiavel = montar_oferta_a_partir_do_buscape(
         oferta_buscape, PARCEIROS_FALSOS, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,

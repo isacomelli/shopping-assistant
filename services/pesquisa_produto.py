@@ -48,7 +48,7 @@ class ResultadoAutomatico:
     resultado: ResultadoOferta
     parceiro_encontrado: bool
     parceiro_nome: Optional[str]
-    distincao_pix_cartao_confiavel: bool
+    confianca_pix_cartao: bool
 
 
 def _normalizar_nome_loja(nome):
@@ -104,7 +104,7 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, parceiros_cadastrados, cot
         valor_milheiro=valor_milheiro,
     )
 
-    return oferta, parceiro, oferta_buscape.distincao_pix_cartao_confiavel
+    return oferta, parceiro, oferta_buscape.confianca_pix_cartao
 
 
 def pesquisar_produto_automaticamente(nome_produto, parceiros_cadastrados, cdi_mensal,
@@ -141,7 +141,7 @@ def pesquisar_produto_automaticamente(nome_produto, parceiros_cadastrados, cdi_m
                 resultado=resultado,
                 parceiro_encontrado=parceiro is not None,
                 parceiro_nome=parceiro["nome"] if parceiro else None,
-                distincao_pix_cartao_confiavel=distincao_confiavel,
+                confianca_pix_cartao=distincao_confiavel,
             )
         )
 

@@ -43,6 +43,8 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from dataclasses import asdict
+from tabulate import tabulate
 
 PASTA_SAIDA = Path(__file__).parent / "debug_output"
 
@@ -85,13 +87,11 @@ def rodar_buscape(termo, headless):
         sys.exit(1)
 
     print(f"{len(ofertas)} ofertas encontradas para {termo!r}\n")
-    for oferta in ofertas:
-        print(
-            f"- {oferta.loja}, preco {oferta.preco}, pix {oferta.preco_pix}, "
-            f"cartao {oferta.preco_cartao}, distincao pix/cartao confiavel, "
-            f"{oferta.distincao_pix_cartao_confiavel}"
-        )
-    return ofertas
+    print(tabulate(
+        [{k: v for k, v in asdict(o).items() if k not in ("url_produto", 'nome_produto')} for o in ofertas],
+        headers="keys",
+        tablefmt="github"
+    ))
 
 
 def rodar_buscape_de_arquivo(caminho_html):
@@ -107,12 +107,13 @@ def rodar_buscape_de_arquivo(caminho_html):
 
     print(f"{len(cartoes)} cartoes de resultado encontrados no html")
     print(f"{len(ofertas)} ofertas com preco reconhecido\n")
-    for oferta in ofertas:
-        print(
-            f"- {oferta.loja}, preco {oferta.preco}, pix {oferta.preco_pix}, "
-            f"cartao {oferta.preco_cartao}, distincao pix/cartao confiavel, "
-            f"{oferta.distincao_pix_cartao_confiavel}"
-        )
+
+    print(tabulate(
+            [{k: v for k, v in asdict(o).items() if k not in ("url_produto", 'nome_produto')} for o in ofertas],
+            headers="keys",
+            tablefmt="github"
+        ))
+    
     return ofertas
 
 

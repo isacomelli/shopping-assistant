@@ -10,33 +10,54 @@ topo de database/db.py sobre por que esse cadastro e manual.
 
 sobre como a extracao funciona, o navegador so e usado para abrir a
 pagina e coletar o html renderizado, atraves de pagina.content(). a
-partir dai, todo o trabalho de achar loja, preco e link do produto
+partir dai, todo o trabalho de achar loja, preco, link e parcelamento
 acontece fora do navegador, na funcao parsear_html_buscape, usando o
-beautifulsoup para navegar pelas tags e atributos de cada cartao de
-resultado, em vez de regex em cima do texto inteiro do cartao. isso
-tem duas vantagens, primeiro, fica mais facil de ajustar quando o
-layout do site mudar, porque cada campo tem seu proprio seletor
-isolado, segundo, da para reprocessar um html ja salvo em disco sem
-precisar abrir o navegador de novo, veja debug_scraper.py, opcao
---reparsear.
+beautifulsoup para navegar pelas tags de cada cartao de resultado,
+pelos atributos data-testid e data-area, em vez de classes css com
+hash, tipo Price_OrqProductCard_Price__TNBZB, que mudam a cada deploy
+do buscape, ou de regex em cima do texto inteiro do cartao.
 
-uma observacao importante sobre confiabilidade, o robots.txt do
-buscape atualmente nao permite acesso automatizado, e o site tambem
-usa protecao contra navegador automatizado, entao e esperado que esta
-consulta falhe de vez em quando, ou sempre, dependendo de como o site
-estiver se comportando no momento. este scraper nao tenta nenhuma
-tecnica agressiva de disfarce, tipo imitar a assinatura tls de um
-chrome real, so um user agent realista e a ocultacao do sinal mais
-comum de automacao.
+os seletores abaixo foram conferidos contra um html real de uma busca
+salva em ultimo_html_buscape.html, entao nao sao mais um chute, mas
+continuam podendo quebrar se o buscape mudar o layout. quando isso
+acontecer, o html completo de toda busca, com sucesso ou falha, fica
+salvo em ultimo_html_buscape.html, ao lado deste arquivo, abra esse
+arquivo num navegador, use inspecionar elemento num cartao de
+produto, e ajuste os seletores logo abaixo dos imports, sem precisar
+mexer no resto do arquivo.
 
-sobre os seletores abaixo, como nao foi possivel abrir o buscape ao
-vivo para inspecionar o html real, eles sao um ponto de partida
-razoavel, nao algo validado contra o site. o html completo de toda
-busca, com sucesso ou falha, e salvo em ultimo_html_buscape.html, ao
-lado deste arquivo. quando a busca nao trouxer os cartoes ou os
-precos certos, abra esse arquivo num navegador, use inspecionar
-elemento num cartao de produto, e ajuste os seletores logo abaixo dos
-imports, sem precisar mexer no resto do arquivo.
+sobre a distincao entre pix e cartao, a pagina de busca do buscape nao
+mostra um preco de pix separado, so um preco unico por cartao de
+resultado, mais um campo de parcelamento, tipo "10x de R$ 206,53", com
+um segundo campo indicando se e "sem juros". a partir desses dois
+dados, sem depender de nenhuma tag especifica de pix, que nao existe
+nesta pagina, este modulo tenta inferir se a oferta representa um
+unico preco ou duas opcoes de pagamento, seguindo esta regra,
+
+tem parcelamento, e parcelas vezes valor da parcela e igual ao preco
+anunciado, dentro de uma pequena tolerancia de arredondamento, a
+oferta tem um unico preco, o do cartao, sem pix reconhecido
+separadamente
+
+tem parcelamento, e parcelas vezes valor da parcela e diferente do
+preco anunciado, a oferta tem duas opcoes de pagamento, pix e cartao,
+o menor dos dois valores e o pix, o maior e o cartao parcelado
+
+nao tem parcelamento reconhecido no cartao, o caso fica indefinido, o
+preco anunciado e usado tanto para pix quanto para cartao, e o calculo
+trata esse preco como se fosse pix, para nao superestimar pontos de
+cartao numa compra que pode ser a vista
+
+essa inferencia fica isolada em _determinar_precos_pix_cartao, para
+poder ser testada e ajustada sem mexer no resto do parsing.
+
+sobre o robots.txt do buscape, ele atualmente nao permite acesso
+automatizado, e o site tambem usa protecao contra navegador
+automatizado, entao e esperado que esta consulta falhe de vez em
+quando, ou sempre, dependendo de como o site estiver se comportando
+no momento. este scraper nao tenta nenhuma tecnica agressiva de
+disfarce, tipo imitar a assinatura tls de um chrome real, so um user
+agent realista e a ocultacao do sinal mais comum de automacao.
 
 quando a consulta falhar por completo, tipo pagina bloqueada, o
 caminho mais confiavel continua sendo cadastrar a oferta manualmente
@@ -76,18 +97,20 @@ SELETORES_BANNER_COOKIES = [
     "#onetrust-accept-btn-handler",
 ]
 
-# cartao de produto de um resultado de busca. cada seletor abaixo e
-# uma lista separada por virgula de possibilidades, o beautifulsoup
-# usa a primeira que encontrar dentro do cartao. ajuste estes valores
-# conforme o html real salvo em ultimo_html_buscape.html
-SELETOR_CARTAO_RESULTADO = "[data-testid='product-card'], li[data-testid='result-item'], article"
-SELETOR_NOME_PRODUTO = "[data-testid='product-name'], h2, h3"
-SELETOR_LOJA = "[data-testid='seller-name'], [class*='seller'], [class*='store'], [class*='Store']"
-SELETOR_PRECO_PRINCIPAL = "[data-testid='price-value'], [class*='Price'] strong, [class*='price'] strong, [class*='Price'], [class*='price']"
-SELETOR_PRECO_PIX = "[data-testid='price-pix'], [class*='pix'], [class*='Pix']"
-SELETOR_LINK_PRODUTO = "a"
+# cartao de produto de um resultado de busca. estes seletores usam
+# data-testid e data-area, atributos estaveis colocados pelo proprio
+# buscape para identificar cada pedaco do cartao, em vez de classes
+# css com hash, que mudam a cada deploy do site
+SELETOR_CARTAO_RESULTADO = '[data-testid="product-card"]'
+SELETOR_NOME_PRODUTO = '[data-testid="product-card::name"]'
+SELETOR_PRECO_PRINCIPAL = '[data-testid="product-card::price"]'
+SELETOR_LOJA = '[data-area="merchant"] span'
+SELETOR_LINK_PRODUTO = 'a[data-testid="product-card::card"]'
+SELETOR_PARCELAMENTO = '[data-testid="product-card::installment"] span'
+SELETOR_JUROS_PARCELAMENTO = '[data-testid="product-card::interest"]'
 
 PADRAO_PRECO = re.compile(r"R\$\s*([\d.]+,\d{2})")
+PADRAO_PARCELAMENTO = re.compile(r"(\d+)\s*x\s*de\s*R\$\s*([\d.]+,\d{2})", re.IGNORECASE)
 
 
 class ErroScraperBuscape(Exception):
@@ -102,15 +125,23 @@ class OfertaBuscape:
     loja: str
     preco: float
     url_produto: str = ""
+    nome_produto: str = ""
 
-    # preco no pix e no cartao, quando o scraper conseguir distinguir
-    # os dois na mesma pesquisa. quando nao conseguir, os dois campos
-    # abaixo repetem o valor de preco, e distincao_pix_cartao_confiavel
-    # fica False, para quem consome este dado saber que precisa
-    # confirmar os dois valores manualmente.
+    # preco no pix e no cartao, inferidos a partir do preco anunciado
+    # e do parcelamento, seguindo a regra descrita no topo deste
+    # arquivo. confianca_pix_cartao fica True somente
+    # quando o scraper conseguiu identificar duas opcoes de
+    # pagamento distintas, pix e cartao, a partir do parcelamento
     preco_pix: float = 0.0
     preco_cartao: float = 0.0
-    distincao_pix_cartao_confiavel: bool = False
+    confianca_pix_cartao: bool = False
+
+    # parcelamento anunciado no cartao de resultado, quando houver.
+    # parcelas fica em 1 quando o cartao nao anuncia nenhum
+    # parcelamento, o que nao quer dizer que a loja so aceita a vista
+    parcelas: int = 1
+    valor_parcela: float = 0.0
+    parcelas_sem_juros: bool = False
 
     def __post_init__(self):
         if not self.preco_pix:
@@ -133,7 +164,7 @@ def _fechar_banner_cookies(pagina):
 
 def _extrair_preco_de_texto(texto):
     """
-    dentro de um elemento ja localizado pela tag certa, tipo o span
+    dentro de um elemento ja localizado pela tag certa, tipo o div
     do preco, ainda precisa converter "R$ 2.399,00" para 2399.0, esta
     funcao cuida so dessa conversao, sem precisar caçar o preco no
     meio de um texto solto.
@@ -160,13 +191,74 @@ def _extrair_loja(cartao, url_produto):
     if texto_loja:
         return texto_loja
 
-    # sem elemento de loja reconhecivel pela tag, cai para o dominio
-    # da url do produto como aproximacao
+    # sem o span da loja, cai para o dominio da url do produto como
+    # aproximacao, so deve acontecer se o buscape mudar o layout do
+    # rodape do cartao
     padrao_dominio = re.search(r"https?://(?:www\.)?([^./]+)\.", url_produto)
     if padrao_dominio:
         return padrao_dominio.group(1).capitalize()
 
     return "loja nao identificada"
+
+
+def _extrair_parcelamento(cartao):
+    """
+    le o texto de parcelamento do cartao, por exemplo "10x de R$
+    165,70", e devolve a quantidade de parcelas, o valor de cada
+    parcela, e se o parcelamento e sem juros.
+
+    quando nao ha nenhum texto de parcelamento reconhecivel no
+    cartao, devolve parcelas 1, valor de parcela 0 e sem_juros False,
+    sinal para quem chama de que o parcelamento e desconhecido, nao
+    de que a compra e a vista.
+    """
+    texto_parcelamento = _texto_do_seletor(cartao, SELETOR_PARCELAMENTO)
+    encontrado = PADRAO_PARCELAMENTO.search(texto_parcelamento)
+    if not encontrado:
+        return 1, 0.0, False
+
+    parcelas = int(encontrado.group(1))
+    valor_parcela = float(encontrado.group(2).replace(".", "").replace(",", "."))
+
+    texto_juros = _texto_do_seletor(cartao, SELETOR_JUROS_PARCELAMENTO)
+    sem_juros = "sem juros" in texto_juros.lower()
+
+    return parcelas, valor_parcela, sem_juros
+
+
+def _determinar_precos_pix_cartao(preco, parcelas, valor_parcela):
+    """
+    a partir do preco anunciado no cartao de resultado e do
+    parcelamento informado, parcelas e valor de cada parcela, decide
+    se a oferta representa um unico preco, ou duas opcoes de
+    pagamento, pix e cartao.
+
+    sem parcelamento reconhecido, parcelas 1 ou valor_parcela zerado,
+    o preco anunciado e usado tanto para pix quanto para cartao, sem
+    certeza da distincao, tratado como pix no calculo, para nao
+    superestimar pontos de cartao numa compra que pode ser a vista.
+
+    com parcelamento, compara o total das parcelas, parcelas vezes
+    valor de cada parcela, com o preco anunciado. os dois batendo,
+    dentro de uma pequena tolerancia de arredondamento, a oferta tem
+    um unico preco, o do cartao, sem pix reconhecido separadamente.
+    os dois nao batendo, a oferta tem duas opcoes de pagamento, pix e
+    cartao, o menor dos dois valores e o pix, o maior e o cartao
+    parcelado, sem assumir de antemao qual dos dois vem maior no
+    html, ja que isso pode variar.
+    """
+    if parcelas <= 1 or valor_parcela <= 0:
+        return preco, preco, False
+
+    total_parcelado = parcelas * valor_parcela
+    tolerancia = max(0.5, parcelas * 0.02)
+
+    if abs(total_parcelado - preco) <= tolerancia:
+        return preco, preco, False
+
+    preco_pix = min(preco, total_parcelado)
+    preco_cartao = max(preco, total_parcelado)
+    return preco_pix, preco_cartao, True
 
 
 def _extrair_oferta_do_cartao(cartao):
@@ -176,8 +268,7 @@ def _extrair_oferta_do_cartao(cartao):
     seletor, em vez de vasculhar o texto inteiro do cartao.
 
     devolve none quando o cartao nao tiver um preco reconhecivel,
-    sinal de que provavelmente nao e um cartao de produto de verdade,
-    tipo um banner de propaganda que casou com o mesmo seletor.
+    sinal de que provavelmente nao e um cartao de produto de verdade.
     """
     preco_texto = _texto_do_seletor(cartao, SELETOR_PRECO_PRINCIPAL)
     preco = _extrair_preco_de_texto(preco_texto)
@@ -190,22 +281,23 @@ def _extrair_oferta_do_cartao(cartao):
         url_produto = f"{URL_BASE}{url_produto}"
 
     loja = _extrair_loja(cartao, url_produto)
-
-    texto_pix = _texto_do_seletor(cartao, SELETOR_PRECO_PIX)
-    preco_pix_extraido = _extrair_preco_de_texto(texto_pix)
-
-    if preco_pix_extraido is not None and preco_pix_extraido != preco:
-        preco_pix, preco_cartao, distincao_confiavel = preco_pix_extraido, preco, True
-    else:
-        preco_pix, preco_cartao, distincao_confiavel = preco, preco, False
+    nome_produto = _texto_do_seletor(cartao, SELETOR_NOME_PRODUTO)
+    parcelas, valor_parcela, parcelas_sem_juros = _extrair_parcelamento(cartao)
+    preco_pix, preco_cartao, distincao_confiavel = _determinar_precos_pix_cartao(
+        preco, parcelas, valor_parcela,
+    )
 
     return OfertaBuscape(
         loja=loja,
         preco=preco,
         url_produto=url_produto,
+        nome_produto=nome_produto,
+        parcelas=parcelas,
+        valor_parcela=valor_parcela,
+        parcelas_sem_juros=parcelas_sem_juros,
         preco_pix=preco_pix,
         preco_cartao=preco_cartao,
-        distincao_pix_cartao_confiavel=distincao_confiavel,
+        confianca_pix_cartao=distincao_confiavel,
     )
 
 
@@ -241,7 +333,7 @@ def parsear_html_buscape(html):
     return cartoes, ofertas
 
 
-def buscar_ofertas_buscape(nome_produto, max_resultados=10, timeout_ms=45000, headless=True,
+def buscar_ofertas_buscape(nome_produto, max_resultados=1000, timeout_ms=45000, headless=True,
                             salvar_debug_em_falha=True):
     """
     pesquisa um produto no buscape e devolve a lista de ofertas

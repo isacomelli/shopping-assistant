@@ -36,3 +36,4 @@ desktop.ini
 
 # html de depuracao salvo pelos scrapers quando uma consulta falha
 scrapers/debug_*.html
+debug_output/*
