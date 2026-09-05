@@ -182,13 +182,13 @@ def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_fal
             headless=headless,
             args=["--disable-blink-features=AutomationControlled"],
         )
-        contexto = navegador.new_context(
+        guia = navegador.new_context(
             user_agent=USER_AGENT,
             locale="pt-BR",
             viewport={"width": 1366, "height": 900},
         )
-        contexto.add_init_script(SCRIPT_ANTI_DETECCAO)
-        pagina = contexto.new_page()
+        guia.add_init_script(SCRIPT_ANTI_DETECCAO)
+        pagina = guia.new_page()
 
         try:
             # domcontentloaded em vez de networkidle, porque a pagina
@@ -208,13 +208,13 @@ def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_fal
 
             html_pagina = pagina.content()
         except Exception as erro:
-            contexto.close()
+            guia.close()
             navegador.close()
             raise ErroScraperLivelo(
                 f"nao foi possivel abrir a pagina da livelo, detalhe tecnico, {erro}"
             )
 
-        contexto.close()
+        guia.close()
         navegador.close()
 
     if not links:

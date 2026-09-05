@@ -131,13 +131,13 @@ def buscar_cashback_por_loja(nome_loja, timeout_ms=45000, headless=True, salvar_
             headless=headless,
             args=["--disable-blink-features=AutomationControlled"],
         )
-        contexto = navegador.new_context(
+        guia = navegador.new_context(
             user_agent=USER_AGENT,
             locale="pt-BR",
             viewport={"width": 1366, "height": 900},
         )
-        contexto.add_init_script(SCRIPT_ANTI_DETECCAO)
-        pagina = contexto.new_page()
+        guia.add_init_script(SCRIPT_ANTI_DETECCAO)
+        pagina = guia.new_page()
 
         try:
             texto_pagina = _consultar_pagina(pagina, url_direta, timeout_ms)
@@ -146,13 +146,13 @@ def buscar_cashback_por_loja(nome_loja, timeout_ms=45000, headless=True, salvar_
                 url_usada = url_busca
                 texto_pagina = _consultar_pagina(pagina, url_busca, timeout_ms)
         except Exception as erro:
-            contexto.close()
+            guia.close()
             navegador.close()
             raise ErroScraperMeliuz(
                 f"nao foi possivel abrir a pagina do meliuz para {nome_loja}, detalhe tecnico, {erro}"
             )
 
-        contexto.close()
+        guia.close()
         navegador.close()
 
     encontrado = PADRAO_CASHBACK.search(texto_pagina)
