@@ -22,20 +22,6 @@ st.set_page_config(page_title="Assistente de Compras da Reforma", layout="wide")
 
 db.inicializar_banco()
 
-# carrega parceiros livelo: primeiro tenta download automatico, depois
-# fallback no arquivo html manual salvo em disco
-from scrapers.livelo import baixar_html_livelo, carregar_parceiros_do_arquivo
-
-html_baixado = baixar_html_livelo()
-if html_baixado:
-    st.toast("Parceiros Livelo atualizados automaticamente.", icon="🔄")
-else:
-    st.toast("Usando parceiros Livelo do arquivo local.", icon="📁")
-
-parceiros_arquivo = carregar_parceiros_do_arquivo()
-if parceiros_arquivo:
-    db.salvar_parceiros_livelo(parceiros_arquivo)
-
 st.title("Assistente de Compras da Reforma")
 st.write(
     "Utilize o menu lateral para acessar a Calculadora, a Wishlist e o "
