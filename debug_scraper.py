@@ -35,6 +35,12 @@ calma. use --sem-salvar se so quiser ver no terminal.
 este script nao muda nenhuma logica dos scrapers, ele so chama as
 mesmas funcoes que o app usa e imprime o retorno de um jeito mais
 facil de ler.
+
+exemplo de uso, reprocessar um html da livelo ja salvo em disco, sem
+abrir o navegador, util depois de ajustar as expressoes regulares em
+scrapers/livelo.py,
+
+python debug_scraper.py livelo "qualquer coisa" --reparsear scrapers/ultimo_html_livelo.html
 """
 
 import argparse
@@ -139,6 +145,30 @@ def rodar_livelo(termo, headless):
     return parceiros
 
 
+def rodar_livelo_de_arquivo(caminho_html):
+    """
+    reprocessa um html da livelo ja salvo em disco, sem abrir o
+    navegador, util para ajustar as expressoes regulares em
+    scrapers/livelo.py rapidamente, testando varias vezes em cima do
+    mesmo html, por exemplo scrapers/ultimo_html_livelo.html, salvo
+    apos toda coleta, ou scrapers/debug_livelo.html, salvo so quando
+    nenhum parceiro foi reconhecido.
+    """
+    from scrapers.livelo import parsear_html_livelo
+
+    html = Path(caminho_html).read_text(encoding="utf-8")
+    parceiros = parsear_html_livelo(html)
+
+    print(f"{len(parceiros)} parceiros reconhecidos no html\n")
+    print(tabulate(
+        [asdict(p) for p in parceiros],
+        headers="keys",
+        tablefmt="github",
+    ))
+
+    return parceiros
+
+
 def rodar_meliuz(termo, headless):
     from scrapers.meliuz import buscar_cashback_por_loja
 
@@ -188,10 +218,13 @@ def main():
     args = parser.parse_args()
 
     if args.reparsear:
-        if args.scraper != "buscape":
-            print("--reparsear so esta implementado para o buscape por enquanto")
+        if args.scraper == "buscape":
+            resultado = rodar_buscape_de_arquivo(args.reparsear)
+        elif args.scraper == "livelo":
+            resultado = rodar_livelo_de_arquivo(args.reparsear)
+        else:
+            print("--reparsear so esta implementado para buscape e livelo por enquanto")
             sys.exit(1)
-        resultado = rodar_buscape_de_arquivo(args.reparsear)
     else:
         funcao = SCRAPERS[args.scraper]
         resultado = funcao(args.termo, headless=not args.mostrar_navegador)
