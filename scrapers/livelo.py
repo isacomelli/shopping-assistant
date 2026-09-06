@@ -53,10 +53,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 URL_BUSCA_LOJA = "https://www.livelo.com.br/busca?query={termo}"
+
+URL_TODOS_OS_PARCEIROS = "https://www.livelo.com.br/juntar-pontos/todos-os-parceiros"
 
 CAMINHO_DEBUG_HTML = Path(__file__).parent / "debug_livelo.html"
 
@@ -90,10 +93,22 @@ SELETORES_BANNER_COOKIES = [
 ]
 
 PADRAO_CODIGO = re.compile(r"/parceiros/[^/]+/([A-Za-z0-9]+)$")
-PADRAO_PONTOS = re.compile(r"(\d+)\s*ponto[s]?\s*por\s*(r\$|u\$)\s*([\d.,]+)", re.IGNORECASE)
+
+# ajustado para capturar "até X pontos" também, que aparece na pagina
+# de todos os parceiros
+PADRAO_PONTOS = re.compile(
+    r"(?:at[eé]\s+)?(\d+)\s*ponto[s]?\s*por\s*(r\$|u\$)\s*([\d.,]+)",
+    re.IGNORECASE,
+)
+
 PADRAO_EM_PROMOCAO = re.compile(r"^\s*(promoção|nova)", re.IGNORECASE)
 PADRAO_ERAM = re.compile(r"eram\s*(\d+)\s*ponto[s]?", re.IGNORECASE)
-PADRAO_NOME = re.compile(r"logo\s+(.*?)(?=\s*(?:até\s*)?\d+\s*ponto)", re.IGNORECASE)
+
+# regex da busca por loja, onde o texto vem "logo NOME"
+PADRAO_NOME = re.compile(r"logo\s+(.*?)(?=\s*(?:at[eé]\s*)?\d+\s*ponto)", re.IGNORECASE)
+
+# extrai o slug do parceiro da url, ex: /parceiros/mercado-livre/MCL
+PADRAO_SLUG_PARCEIRO = re.compile(r"/parceiros/([^/]+)/[A-Za-z0-9]+$")
 
 
 @dataclass
@@ -115,6 +130,18 @@ class ErroScraperLivelo(Exception):
     limite, para diferenciar isso de uma loja pesquisada que
     simplesmente nao e parceira livelo, o que nao e um erro.
     """
+
+
+def _nome_do_slug(href):
+    """
+    extrai o nome do parceiro a partir do slug da url, ex:
+    mercado-livre -> Mercado Livre
+    """
+    encontrado = PADRAO_SLUG_PARCEIRO.search(href)
+    if not encontrado:
+        return None
+    slug = encontrado.group(1)
+    return " ".join(palavra.capitalize() for palavra in slug.split("-"))
 
 
 def _parse_taxa_pontos(trecho):
@@ -147,8 +174,14 @@ def _extrair_parceiro(href, texto_completo):
 
     em_promocao = bool(PADRAO_EM_PROMOCAO.match(texto))
 
+    # tenta extrair o nome do texto primeiro (funciona na pagina de busca)
     encontrado_nome = PADRAO_NOME.search(texto)
-    nome = encontrado_nome.group(1).strip() if encontrado_nome else codigo
+    if encontrado_nome:
+        nome = encontrado_nome.group(1).strip()
+    else:
+        # fallback para pagina de todos os parceiros, onde o nome nao
+        # esta no texto do card, mas sim no slug da url
+        nome = _nome_do_slug(href) or codigo
 
     blocos = re.split(r"\bclube\b", texto, flags=re.IGNORECASE)
     pontos_padrao, moeda_padrao = _parse_taxa_pontos(blocos[0])
@@ -337,9 +370,92 @@ def buscar_parceiro_livelo(nome_loja, timeout_ms=60000, headless=True):
     return parsear_html_livelo(html_pagina) if html_pagina else []
 
 
+# =============================================================================
+# NOVAS FUNCOES: download automatico e carregamento do arquivo manual
+# =============================================================================
+
+def baixar_html_livelo(url=None, timeout=30):
+    """
+    tenta baixar o html da pagina de todos os parceiros da livelo
+    via requests, com headers realistas de browser. se conseguir,
+    salva no arquivo ultimo_html_livelo.html e devolve o html. se o
+    akamai bloquear (403, 406, etc.) ou qualquer outro erro
+    acontecer, devolve None e o chamador usa o arquivo manual como
+    fallback.
+
+    isso nao e scraping, e apenas um download http de uma pagina
+    publica e estatica.
+    """
+    if url is None:
+        url = URL_TODOS_OS_PARCEIROS
+
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,image/apng,*/*;q=0.8"
+        ),
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+    }
+
+    try:
+        resposta = requests.get(url, headers=headers, timeout=timeout)
+        if resposta.status_code == 200:
+            html = resposta.text
+            CAMINHO_ULTIMO_HTML.write_text(html, encoding="utf-8")
+            return html
+    except Exception:
+        pass
+
+    return None
+
+
+def carregar_parceiros_do_arquivo(caminho=None):
+    """
+    le o arquivo html salvo manualmente da pagina de todos os
+    parceiros da livelo e devolve a lista de ParceiroLivelo
+    encontrados. se o arquivo nao existir ou estiver vazio, devolve
+    lista vazia.
+    """
+    if caminho is None:
+        caminho = CAMINHO_ULTIMO_HTML
+
+    try:
+        html = Path(caminho).read_text(encoding="utf-8")
+    except Exception:
+        return []
+
+    return parsear_html_livelo(html)
+
+
+def buscar_parceiro_por_nome(nome_loja, parceiros):
+    """
+    busca um parceiro pelo nome da loja dentro de uma lista ja
+    carregada em memoria. util para casar lojas do buscape com
+    parceiros sem bater no site da livelo.
+    """
+    from database.db import _casar_nome_loja
+    return _casar_nome_loja(nome_loja, parceiros)
+
+
 if __name__ == "__main__":
-    nome_loja_teste = "Amazon"
-    resultado = buscar_parceiro_livelo(nome_loja_teste, headless=False)
-    print(f"{len(resultado)} parceiro(s) encontrado(s) para {nome_loja_teste}")
-    for parceiro in resultado:
-        print(parceiro)
+    # teste: primeiro tenta baixar automatico, depois fallback no arquivo
+    html = baixar_html_livelo()
+    if html:
+        print("download automatico funcionou")
+    else:
+        print("download automatico falhou, usando arquivo manual")
+
+    parceiros = carregar_parceiros_do_arquivo()
+    print(f"{len(parceiros)} parceiro(s) encontrado(s)")
+    for p in parceiros[:5]:
+        print(f"  {p.codigo}: {p.nome} - {p.pontos_padrao} pts/{p.moeda_padrao}")

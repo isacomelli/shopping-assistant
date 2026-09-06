@@ -7,21 +7,21 @@ loja automaticamente, sem que voce precise digitar nada na mao.
 primeiro, o buscape e consultado para descobrir o preco e a lista de
 lojas que vendem o produto, ver scrapers/buscape.py.
 
-segundo, para cada loja encontrada, o modulo consulta diretamente a
-livelo, atraves da busca por loja em scrapers/livelo.py,
-buscar_parceiro_livelo, que pesquisa livelo.com.br/busca?query= pelo
-nome da loja. quando a loja e parceira, o resultado traz a
-pontuacao por real ou por dolar. quando nao e, o resultado so marca
-isso, com pontos_por_real zerado e parceiro_encontrado como False, a
-oferta continua aparecendo no ranking normalmente, so sem pontos.
+segundo, para cada loja encontrada, o modulo consulta os parceiros
+livelo ja carregados no banco de dados no startup do app. quando a
+loja e parceira, o resultado traz a pontuacao por real ou por dolar.
+quando nao e, o resultado so marca isso, com pontos_por_real zerado e
+parceiro_encontrado como False, a oferta continua aparecendo no
+ranking normalmente, so sem pontos.
 
-nao existe mais cadastro manual de parceiro, nem tabela auxiliar no
-banco, a consulta e sempre em tempo real, uma loja por vez.
+nao existe mais consulta live ao site da livelo durante a pesquisa de
+produto, o que elimina o gargalo de abrir o playwright para cada loja.
 """
 
 from dataclasses import dataclass
 from typing import Optional
 
+from database import db
 from engine.price_engine import Oferta, ResultadoOferta, calcular_oferta
 
 VALOR_MILHEIRO_PADRAO_PESQUISA = 15.0
@@ -44,42 +44,26 @@ class ResultadoAutomatico:
     confianca_pix_cartao: bool
 
 
-def buscar_parceiro_para_loja(nome_loja, buscador_livelo):
+def buscar_parceiro_para_loja(nome_loja):
     """
-    pesquisa a loja na busca da livelo e devolve o primeiro parceiro
-    reconhecido, ou none quando a loja nao for parceira.
-
-    buscador_livelo e injetavel para facilitar teste sem depender de
-    rede real ou do playwright, veja
-    scrapers.livelo.buscar_parceiro_livelo para a implementacao de
-    verdade. qualquer falha na consulta, por exemplo
-    ErroScraperLivelo por bloqueio de bot, e tratada aqui mesmo como
-    loja nao encontrada, para uma loja com problema nao travar a
-    pesquisa do produto inteiro.
+    pesquisa a loja nos parceiros livelo ja carregados no banco de
+    dados no startup do app. devolve o primeiro parceiro casado, ou
+    none quando a loja nao for parceira.
     """
-    try:
-        encontrados = buscador_livelo(nome_loja)
-    except Exception:
-        encontrados = []
-
-    return encontrados[0] if encontrados else None
+    return db.buscar_parceiro_livelo_por_nome(nome_loja)
 
 
 def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
                                        pontos_por_dolar_cartao_padrao,
-                                       buscador_livelo,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
                                        percentual_bonus_transferencia=BONUS_TRANSFERENCIA_PADRAO_PESQUISA,
                                        parcelas=PARCELAS_PADRAO_PESQUISA):
     """
     monta uma Oferta pronta para calculo a partir de uma oferta
-    encontrada no buscape, consultando a livelo pelo nome da loja.
-    devolve a oferta, o parceiro encontrado, ou none quando a loja
-    nao for parceira, e se a distincao entre pix e cartao veio
-    confiavel do buscape.
+    encontrada no buscape, consultando os parceiros livelo em cache.
     """
-    parceiro = buscar_parceiro_para_loja(oferta_buscape.loja, buscador_livelo)
-    pontos_por_real = float(parceiro.pontos_padrao) if parceiro else 0.0
+    parceiro = buscar_parceiro_para_loja(oferta_buscape.loja)
+    pontos_por_real = float(parceiro["pontos_padrao"]) if parceiro else 0.0
 
     oferta = Oferta(
         loja=oferta_buscape.loja,
@@ -100,7 +84,6 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
 def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
                                        cotacao_dolar, pontos_por_dolar_cartao_padrao,
                                        buscador_buscape=None,
-                                       buscador_livelo=None,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
                                        percentual_bonus_transferencia=BONUS_TRANSFERENCIA_PADRAO_PESQUISA,
                                        parcelas=PARCELAS_PADRAO_PESQUISA):
@@ -108,24 +91,11 @@ def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
     pesquisa um produto no buscape e devolve o ranking automatico de
     ofertas, ja calculado da mais barata para a mais cara.
 
-    para cada loja encontrada no buscape, consulta a livelo por
-    loja, atraves de buscador_livelo, ver
-    buscar_parceiro_para_loja.
-
-    buscador_buscape e buscador_livelo sao injetaveis para facilitar
-    teste sem depender de rede real ou do playwright, por padrao
-    usam scrapers.buscape.buscar_ofertas_buscape e
-    scrapers.livelo.buscar_parceiro_livelo. deixa propagar
-    ErroScraperBuscape quando a busca do buscape falhar, o chamador
-    decide como mostrar isso na tela. falha na consulta da livelo,
-    por loja, nao interrompe a pesquisa, ver
-    buscar_parceiro_para_loja.
+    para cada loja encontrada no buscape, consulta os parceiros livelo
+    ja carregados no banco no startup do app.
     """
     if buscador_buscape is None:
         from scrapers.buscape import buscar_ofertas_buscape as buscador_buscape
-
-    if buscador_livelo is None:
-        from scrapers.livelo import buscar_parceiro_livelo as buscador_livelo
 
     ofertas_buscape = buscador_buscape(nome_produto)
 
@@ -133,7 +103,7 @@ def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
     for oferta_buscape in ofertas_buscape:
         oferta, parceiro, distincao_confiavel = montar_oferta_a_partir_do_buscape(
             oferta_buscape, cotacao_dolar, pontos_por_dolar_cartao_padrao,
-            buscador_livelo, valor_milheiro, percentual_bonus_transferencia, parcelas,
+            valor_milheiro, percentual_bonus_transferencia, parcelas,
         )
         resultado = calcular_oferta(oferta, cdi_mensal)
         resultados.append(
@@ -141,7 +111,7 @@ def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
                 oferta=oferta,
                 resultado=resultado,
                 parceiro_encontrado=parceiro is not None,
-                parceiro_nome=parceiro.nome if parceiro else None,
+                parceiro_nome=parceiro["nome"] if parceiro else None,
                 confianca_pix_cartao=distincao_confiavel,
             )
         )

@@ -2,10 +2,11 @@
 pagina de pesquisa e calculo do preco real de um produto.
 
 fluxo principal, assim que voce cria um produto novo, a pagina ja
-dispara a pesquisa automatica no buscape, tenta casar cada loja
-encontrada com um parceiro livelo cadastrado manualmente, e calcula o
-preco efetivo de cada uma com os valores padrao, milheiro de R$ 15,
-bonus de transferencia de 80% e 6 parcelas.
+dispara a pesquisa automatica no buscape e, para cada loja encontrada,
+consulta a busca publica da Livelo para verificar se existe parceria e
+qual a taxa de pontos. quando a loja e parceira, o resultado traz a
+pontuacao por real ou por dolar; caso contrario, a loja aparece sem
+pontuacao e continua no ranking normalmente.
 
 cada resultado automatico tem um botao editar variaveis, que abre o
 formulario manual ja preenchido com os dados daquela loja, para voce
@@ -82,16 +83,15 @@ st.caption(
 
 st.header("2. Pesquisa automática")
 st.caption(
-    "Busca o produto no BuscaPé e tenta casar cada loja encontrada com um "
-    "parceiro Livelo já cadastrado manualmente, na tela inicial. Valores "
-    f"padrão, milheiro R$ {VALOR_MILHEIRO_PADRAO_PESQUISA:.2f}, bônus de "
-    f"transferência {BONUS_TRANSFERENCIA_PADRAO_PESQUISA:.0f}%, "
-    f"{PARCELAS_PADRAO_PESQUISA}x no cartão."
+    "Busca o produto no BuscaPé e, para cada loja encontrada, consulta a busca pública da Livelo "
+    "para verificar parceria e taxa de pontos. lojas sem parceria aparecem sem pontuação. "
+    f"Valores padrão: milheiro R$ {VALOR_MILHEIRO_PADRAO_PESQUISA:.2f}, bônus de "
+    f"transferência {BONUS_TRANSFERENCIA_PADRAO_PESQUISA:.0f}%, {PARCELAS_PADRAO_PESQUISA}x no cartão."
 )
 
+# parceiros livelo carregados do arquivo html no startup do app
 parceiros_livelo = db.listar_parceiros_livelo()
-nomes_parceiros = [parceiro["nome"] for parceiro in parceiros_livelo]
-
+nomes_parceiros = [p["nome"] for p in parceiros_livelo]
 col_busca_1, col_busca_2 = st.columns([1, 3])
 with col_busca_1:
     pesquisar_agora = st.button("Pesquisar automaticamente no BuscaPé")
@@ -103,7 +103,6 @@ if pesquisar_agora or disparo_automatico:
         try:
             resultados_automaticos = pesquisar_produto_automaticamente(
                 nome_produto=produto_atual["nome"],
-                parceiros_cadastrados=parceiros_livelo,
                 cdi_mensal=float(config["cdi_mensal"]),
                 cotacao_dolar=float(config["cotacao_dolar"]),
                 pontos_por_dolar_cartao_padrao=float(config["pontos_dolar_cartao_padrao"]),
@@ -113,7 +112,7 @@ if pesquisar_agora or disparo_automatico:
             st.error(
                 "não foi possível pesquisar automaticamente agora, o BuscaPé pode "
                 "ter bloqueado o acesso automatizado ou mudado o layout. cadastre "
-                f"a oferta manualmente abaixo enquanto isso. detalhe técnico, {erro}"
+                "a oferta manualmente abaixo enquanto isso. detalhe técnico, {erro}"
             )
 
 resultados_automaticos = st.session_state.get(f"resultados_automaticos_{produto_id}")
@@ -121,13 +120,6 @@ resultados_automaticos = st.session_state.get(f"resultados_automaticos_{produto_
 prefill = st.session_state.pop("prefill_oferta", None)
 
 if resultados_automaticos:
-    if not nomes_parceiros:
-        st.warning(
-            "nenhum parceiro Livelo cadastrado ainda, então nenhuma loja pontuou "
-            "automaticamente. cadastre os parceiros na tela inicial, seção "
-            "Parceiros Livelo, e pesquise de novo."
-        )
-
     for resultado_automatico in resultados_automaticos:
         oferta = resultado_automatico.oferta
         resultado = resultado_automatico.resultado
@@ -249,9 +241,6 @@ with st.form("form_oferta", clear_on_submit=True):
         if parceiro_selecionado != "nenhum":
             parceiro_info = next(p for p in parceiros_livelo if p["nome"] == parceiro_selecionado)
             pontos_por_real_sugerido = float(parceiro_info["pontos_padrao"])
-        pontos_por_real = st.number_input(
-            "Pontos por real no site parceiro", min_value=0.0, value=pontos_por_real_sugerido, step=0.5,
-        )
     with col5:
         cartao_selecionado = st.selectbox(
             "Cartão usado na compra", ["nenhum"] + nomes_cartoes,
@@ -391,16 +380,3 @@ for posicao, resultado in enumerate(ranking):
             st.write(f"Preço efetivo cartão, R$ {resultado.preco_efetivo_cartao:.2f}")
 
         st.markdown(f"**Economia em relação ao preço anunciado, R$ {resultado.economia_vs_anunciado:.2f}**")
-
-st.header("5. Simulador, a partir de quantas parcelas compensa")
-
-if ofertas_salvas:
-    oferta_base = ofertas_para_calculo[0]
-    simulacao = simular_parcelamento(
-        oferta_base.preco_pix, oferta_base.preco_cartao, float(config["cdi_mensal"]), max_parcelas=12,
-    )
-    renderizar_grafico_linha_svg(
-        rotulos=[f"{linha['parcelas']}x" for linha in simulacao],
-        valores=[linha["custo_efetivo"] for linha in simulacao],
-    )
-    st.caption(f"Simulação baseada na primeira oferta cadastrada, {oferta_base.loja}.")

@@ -293,3 +293,113 @@ def listar_historico(produto_id):
             (produto_id,),
         ).fetchall()
         return [dict(linha) for linha in linhas]
+
+
+# =============================================================================
+# parceiros livelo em cache, lidos do arquivo html manual
+# =============================================================================
+
+
+def salvar_parceiros_livelo(parceiros):
+    """
+    substitui a lista inteira de parceiros livelo em cache. usada no
+    startup do app, quando o arquivo ultimo_html_livelo.html e
+    reprocessado.
+    """
+    with conexao() as conn:
+        conn.execute("DELETE FROM livelo_parceiros")
+        for parceiro in parceiros:
+            conn.execute(
+                """
+                INSERT INTO livelo_parceiros
+                (codigo, nome, url, pontos_padrao, moeda_padrao,
+                 pontos_clube, em_promocao, pontos_anteriores, atualizado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (
+                    parceiro.codigo,
+                    parceiro.nome,
+                    parceiro.url,
+                    parceiro.pontos_padrao,
+                    parceiro.moeda_padrao,
+                    parceiro.pontos_clube,
+                    1 if parceiro.em_promocao else 0,
+                    parceiro.pontos_anteriores,
+                ),
+            )
+
+
+def listar_parceiros_livelo():
+    with conexao() as conn:
+        linhas = conn.execute(
+            "SELECT * FROM livelo_parceiros ORDER BY nome"
+        ).fetchall()
+        return [dict(linha) for linha in linhas]
+
+
+def buscar_parceiro_livelo_por_nome(nome_loja):
+    """
+    busca um parceiro livelo pelo nome da loja, usando comparacao
+    flexivel de texto. devolve o dicionario do parceiro ou none.
+    """
+    with conexao() as conn:
+        linhas = conn.execute(
+            "SELECT * FROM livelo_parceiros ORDER BY nome"
+        ).fetchall()
+        parceiros = [dict(linha) for linha in linhas]
+        return _casar_nome_loja(nome_loja, parceiros)
+
+
+def _normalizar_nome(texto):
+    import unicodedata
+    if not texto:
+        return ""
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return " ".join(texto.lower().strip().split())
+
+
+def _casar_nome_loja(nome_loja, parceiros):
+    """
+    tenta casar o nome da loja do buscape com um parceiro livelo ja
+    conhecido, usando comparacao por substrings normalizadas.
+    """
+    nome_norm = _normalizar_nome(nome_loja)
+
+    # remocoes comuns para melhorar o casamento
+    sufixos = [".com.br", ".com", " brasil", " online", " shop", " store"]
+    nome_base = nome_norm
+    for sufixo in sufixos:
+        nome_base = nome_base.replace(sufixo, "")
+
+    melhor_casamento = None
+    melhor_pontuacao = 0
+
+    for parceiro in parceiros:
+        parceiro_norm = _normalizar_nome(parceiro["nome"])
+        parceiro_base = parceiro_norm
+        for sufixo in sufixos:
+            parceiro_base = parceiro_base.replace(sufixo, "")
+
+        # pontuacao 3: igualdade exata
+        if nome_norm == parceiro_norm:
+            return parceiro
+
+        # pontuacao 2: um contem o outro (base limpo)
+        if nome_base in parceiro_base or parceiro_base in nome_base:
+            if len(parceiro_base) > melhor_pontuacao:
+                melhor_casamento = parceiro
+                melhor_pontuacao = len(parceiro_base)
+            continue
+
+        # pontuacao 1: palavras significativas em comum
+        palavras_loja = {p for p in nome_base.split() if len(p) > 2}
+        palavras_parceiro = {p for p in parceiro_base.split() if len(p) > 2}
+        if palavras_loja and palavras_parceiro:
+            intersecao = palavras_loja & palavras_parceiro
+            if len(intersecao) == len(palavras_loja) or len(intersecao) == len(palavras_parceiro):
+                if len(parceiro_base) > melhor_pontuacao:
+                    melhor_casamento = parceiro
+                    melhor_pontuacao = len(parceiro_base)
+
+    return melhor_casamento
