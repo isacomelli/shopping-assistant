@@ -20,6 +20,8 @@ manual de parceiro aqui.
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+import json
+import re
 
 CAMINHO_BANCO = Path(__file__).parent / "shopping.db"
 
@@ -293,3 +295,96 @@ def listar_historico(produto_id):
             (produto_id,),
         ).fetchall()
         return [dict(linha) for linha in linhas]
+
+
+# livelo parceiros (compatibilidade)
+
+def listar_parceiros_livelo():
+    """
+    Retorna a lista de parceiros Livelo/Esfera carregada a partir de um
+    arquivo ao lado do módulo (livelo_parceiros.json ou livelo_parceiros.html).
+
+    Cada parceiro é um dict com pelo menos as chaves: 'nome' e
+    'pontos_padrao' (float). Se o arquivo não existir, retorna lista vazia.
+    """
+    base = Path(__file__).parent
+    json_path = base / "livelo_parceiros.json"
+    html_path = base / "livelo_parceiros.html"
+
+    if json_path.exists():
+        try:
+            with json_path.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            parceiros = []
+            for p in data:
+                nome = str(p.get("nome", "")).strip()
+                try:
+                    pontos = float(p.get("pontos_padrao", 0.0))
+                except Exception:
+                    pontos = 0.0
+                if nome:
+                    parceiros.append({"nome": nome, "pontos_padrao": pontos})
+            return parceiros
+        except Exception:
+            return []
+
+    if html_path.exists():
+        text = html_path.read_text(encoding="utf-8")
+        parceiros = []
+        # tenta extrair linhas com nome e um numero (pontos) por heurística
+        for line in text.splitlines():
+            clean = re.sub(r"<[^>]+>", "", line).strip()
+            if not clean:
+                continue
+            m = re.match(r"^(?P<n>.+?)[\s–\-—:]+(?P<p>[\d.,]+)\s*$", clean)
+            if m:
+                nome = m.group("n").strip()
+                try:
+                    pontos = float(m.group("p").replace(",", "."))
+                except Exception:
+                    pontos = 0.0
+            else:
+                nome = clean
+                pontos = 0.0
+            if nome:
+                parceiros.append({"nome": nome, "pontos_padrao": pontos})
+        return parceiros
+
+    return []
+
+
+def buscar_parceiro_livelo_por_nome(nome_loja):
+    """
+    Procura um parceiro cujo nome case com a loja informada. A comparação
+    é feita em lowercase e aceita correspondências parciais.
+
+    Retorna o dicionário do parceiro ou None se não encontrado.
+    """
+    if not nome_loja:
+        return None
+    candidatos = listar_parceiros_livelo()
+    alvo = nome_loja.strip().lower()
+
+    # primeiro tenta correspondência exata ou contida
+    for p in candidatos:
+        nome_p = p.get("nome", "").strip().lower()
+        if not nome_p:
+            continue
+        if nome_p == alvo or nome_p in alvo or alvo in nome_p:
+            return p
+
+    # fallback: tenta tokenização simples (palavras em comum)
+    alvo_tokens = set(re.findall(r"\w+", alvo))
+    best = None
+    best_score = 0
+    for p in candidatos:
+        nome_p = p.get("nome", "").strip().lower()
+        tokens = set(re.findall(r"\w+", nome_p))
+        score = len(alvo_tokens & tokens)
+        if score > best_score:
+            best_score = score
+            best = p
+    if best_score > 0:
+        return best
+
+    return None
