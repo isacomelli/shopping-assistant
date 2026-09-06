@@ -12,9 +12,10 @@ exemplo de uso, consultar um parceiro no meliuz, em modo headless,
 
 python debug_scraper.py meliuz "Fast Shop"
 
-exemplo de uso, atualizar a lista de parceiros da livelo,
+exemplo de uso, consultar se uma loja e parceira livelo, pelo nome da
+loja encontrado no buscape,
 
-python debug_scraper.py livelo "qualquer coisa"
+python debug_scraper.py livelo "Fast Shop"
 
 exemplo de uso, reprocessar um html do buscape ja salvo em disco, sem
 abrir o navegador, util depois de ajustar os seletores em
@@ -22,10 +23,9 @@ scrapers/buscape.py,
 
 python debug_scraper.py buscape "geladeira" --reparsear scrapers/ultimo_html_buscape.html
 
-o termo da livelo hoje nao e usado pelo scraper, que le a lista
-inteira de parceiros, mas o argumento continua obrigatorio para manter
-a mesma linha de comando dos outros scrapers, caso o scraper da livelo
-passe a aceitar um termo de busca no futuro.
+o termo da livelo agora e o nome da loja pesquisada, ja que o scraper
+consulta a busca da livelo por loja, em vez de ler a lista inteira de
+parceiros, ver o topo de scrapers/livelo.py.
 
 por padrao, o resultado aparece formatado no terminal e tambem e salvo
 em debug_output, como json, para dar para comparar pesquisas
@@ -40,7 +40,7 @@ exemplo de uso, reprocessar um html da livelo ja salvo em disco, sem
 abrir o navegador, util depois de ajustar as expressoes regulares em
 scrapers/livelo.py,
 
-python debug_scraper.py livelo "qualquer coisa" --reparsear scrapers/ultimo_html_livelo.html
+python debug_scraper.py livelo "Fast Shop" --reparsear scrapers/ultimo_html_livelo.html
 """
 
 import argparse
@@ -124,24 +124,24 @@ def rodar_buscape_de_arquivo(caminho_html):
 
 
 def rodar_livelo(termo, headless):
-    from scrapers.livelo import ErroScraperLivelo, buscar_parceiros_livelo
+    from scrapers.livelo import ErroScraperLivelo, buscar_parceiro_livelo
 
     try:
-        parceiros = buscar_parceiros_livelo(headless=headless)
+        parceiros = buscar_parceiro_livelo(termo, headless=headless)
     except ErroScraperLivelo as erro:
         print(f"erro no scraper da livelo, {erro}")
         sys.exit(1)
 
-    print(f"{len(parceiros)} parceiros encontrados\n")
-    limite_no_terminal = 20
-    for parceiro in parceiros[:limite_no_terminal]:
+    if not parceiros:
+        print(f"nenhum parceiro livelo encontrado para {termo!r}, essa loja provavelmente nao e parceira")
+        return parceiros
+
+    print(f"{len(parceiros)} parceiro(s) encontrado(s) para {termo!r}\n")
+    for parceiro in parceiros:
         print(
             f"- {parceiro.nome}, {parceiro.pontos_padrao} pontos por "
             f"{parceiro.moeda_padrao}, em promocao, {parceiro.em_promocao}"
         )
-    if len(parceiros) > limite_no_terminal:
-        faltam = len(parceiros) - limite_no_terminal
-        print(f"... e mais {faltam} parceiros, veja o json salvo para a lista completa")
     return parceiros
 
 

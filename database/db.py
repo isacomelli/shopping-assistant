@@ -11,16 +11,13 @@ primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE
 dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja
 existe.
 
-sobre a tabela livelo_parceiros, ela nao e mais alimentada por um
-scraper automatico. o site da livelo bloqueia qualquer acesso
-automatizado a nivel de dominio, atraves do akamai, entao a tabela
-agora e mantida por cadastro manual, feito uma vez por parceiro em
-app.py e reaproveitado pela pesquisa automatica em services/pesquisa_produto.py.
+sobre a livelo, a pesquisa automatica em
+services/pesquisa_produto.py consulta a busca da livelo direto por
+loja, em scrapers/livelo.py, nao existe mais tabela nem cadastro
+manual de parceiro aqui.
 """
 
-import re
 import sqlite3
-import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -140,20 +137,16 @@ def inicializar_banco():
                 registrado_em TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (produto_id) REFERENCES produtos(id)
             );
-
-            CREATE TABLE IF NOT EXISTS livelo_parceiros (
-                codigo TEXT PRIMARY KEY,
-                nome TEXT NOT NULL,
-                url TEXT NOT NULL,
-                pontos_padrao REAL,
-                moeda_padrao TEXT,
-                pontos_clube REAL,
-                em_promocao INTEGER,
-                pontos_anteriores REAL,
-                atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
-            );
             """
         )
+
+        # a tabela livelo_parceiros existia para o cadastro manual de
+        # parceiros, feature removida, a pesquisa automatica agora
+        # consulta a livelo direto por loja, ver
+        # services/pesquisa_produto.py e scrapers/livelo.py. este drop
+        # limpa a tabela em bancos que ja existiam antes dessa
+        # mudanca, sem afetar nenhuma outra tabela
+        conn.execute("DROP TABLE IF EXISTS livelo_parceiros")
 
         _migrar_colunas_novas(conn)
 
@@ -298,95 +291,5 @@ def listar_historico(produto_id):
         linhas = conn.execute(
             "SELECT * FROM historico_precos WHERE produto_id = ? ORDER BY registrado_em",
             (produto_id,),
-        ).fetchall()
-        return [dict(linha) for linha in linhas]
-
-
-# parceiros livelo, cadastro manual
-#
-# a tabela nao e mais alimentada por scraper, ver o comentario no topo
-# deste arquivo. o codigo de cada parceiro manual e gerado a partir do
-# nome, para o cadastro poder ser atualizado depois pelo mesmo nome.
-
-def _slug_parceiro_manual(nome):
-    forma_normalizada = unicodedata.normalize("NFKD", nome)
-    sem_acento = "".join(c for c in forma_normalizada if not unicodedata.combining(c))
-    sem_acento = re.sub(r"[^a-zA-Z0-9\s]", "", sem_acento).strip().upper()
-    return "MANUAL-" + re.sub(r"\s+", "-", sem_acento)
-
-
-def adicionar_parceiro_livelo_manual(nome, pontos_padrao, moeda_padrao="R$"):
-    """
-    cadastra ou atualiza, pelo nome, um parceiro livelo com a taxa de
-    pontos por real ou por dolar informada a mao. e o unico jeito
-    confiavel de manter esta tabela hoje, ja que o site da livelo
-    bloqueia qualquer scraping automatizado.
-    """
-    codigo = _slug_parceiro_manual(nome)
-    with conexao() as conn:
-        conn.execute(
-            """
-            INSERT INTO livelo_parceiros (
-                codigo, nome, url, pontos_padrao, moeda_padrao,
-                pontos_clube, em_promocao, pontos_anteriores, atualizado_em
-            ) VALUES (?, ?, '', ?, ?, 0, 0, 0, CURRENT_TIMESTAMP)
-            ON CONFLICT(codigo) DO UPDATE SET
-                nome = excluded.nome,
-                pontos_padrao = excluded.pontos_padrao,
-                moeda_padrao = excluded.moeda_padrao,
-                atualizado_em = CURRENT_TIMESTAMP
-            """,
-            (codigo, nome.strip(), pontos_padrao, moeda_padrao),
-        )
-        return codigo
-
-
-def remover_parceiro_livelo(codigo):
-    with conexao() as conn:
-        conn.execute("DELETE FROM livelo_parceiros WHERE codigo = ?", (codigo,))
-
-
-def salvar_parceiros_livelo(parceiros):
-    """
-    mantido para compatibilidade, caso algum script antigo ainda
-    chame esta funcao passando objetos ParceiroLivelo completos.
-    """
-    with conexao() as conn:
-        for parceiro in parceiros:
-            conn.execute(
-                """
-                INSERT INTO livelo_parceiros (
-                    codigo, nome, url, pontos_padrao, moeda_padrao,
-                    pontos_clube, em_promocao, pontos_anteriores, atualizado_em
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(codigo) DO UPDATE SET
-                    nome = excluded.nome,
-                    url = excluded.url,
-                    pontos_padrao = excluded.pontos_padrao,
-                    moeda_padrao = excluded.moeda_padrao,
-                    pontos_clube = excluded.pontos_clube,
-                    em_promocao = excluded.em_promocao,
-                    pontos_anteriores = excluded.pontos_anteriores,
-                    atualizado_em = CURRENT_TIMESTAMP
-                """,
-                (
-                    parceiro.codigo, parceiro.nome, parceiro.url, parceiro.pontos_padrao,
-                    parceiro.moeda_padrao, parceiro.pontos_clube, int(parceiro.em_promocao),
-                    parceiro.pontos_anteriores,
-                ),
-            )
-
-
-def listar_parceiros_livelo():
-    with conexao() as conn:
-        linhas = conn.execute("SELECT * FROM livelo_parceiros ORDER BY nome").fetchall()
-        return [dict(linha) for linha in linhas]
-
-
-def buscar_parceiro_livelo_por_nome(termo):
-    with conexao() as conn:
-        linhas = conn.execute(
-            "SELECT * FROM livelo_parceiros WHERE nome LIKE ? ORDER BY nome",
-            (f"%{termo}%",),
         ).fetchall()
         return [dict(linha) for linha in linhas]

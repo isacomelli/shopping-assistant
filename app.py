@@ -2,18 +2,11 @@
 tela inicial do assistente de compras da reforma.
 
 aqui fica o perfil financeiro, cdi, cotacao do dolar e os parametros
-padrao do calculo de milhas, os cartoes de credito cadastrados, e o
-cadastro manual dos parceiros Livelo.
+padrao do calculo de milhas, e os cartoes de credito cadastrados.
 
-sobre o cadastro de parceiros Livelo, ele e manual porque o site da
-livelo bloqueia qualquer acesso automatizado a nivel de dominio,
-atraves do akamai, o bloqueio acontece antes mesmo do conteudo da
-pagina carregar, entao nao importa qual pagina do site e consultada,
-o resultado e sempre access denied. cadastrar aqui uma vez por
-parceiro, com o nome exatamente como ele costuma aparecer nos
-resultados do buscape, e o que permite a pesquisa automatica da
-Calculadora casar cada loja encontrada com a pontuacao Livelo certa,
-sem precisar digitar isso de novo a cada pesquisa.
+a pesquisa automatica na Calculadora consulta a livelo direto por
+loja, ver services/pesquisa_produto.py e scrapers/livelo.py, nao
+existe mais cadastro manual de parceiro aqui.
 
 as outras telas ficam na pasta pages e aparecem automaticamente no
 menu lateral do streamlit.
@@ -142,63 +135,3 @@ with st.form("form_cartao", clear_on_submit=True):
             st.rerun()
         else:
             st.warning("Digite o nome do cartão.")
-
-st.header("Parceiros Livelo")
-st.caption(
-    "Cadastro manual, atualizado por você de vez em quando, porque o site "
-    "da Livelo bloqueia qualquer acesso automatizado. Use aqui exatamente "
-    "o nome como a loja costuma aparecer nas buscas, por exemplo Amazon "
-    "ou Fast Shop, para a pesquisa automática da Calculadora conseguir "
-    "casar a loja encontrada com a pontuação certa."
-)
-
-parceiros_livelo = db.listar_parceiros_livelo()
-if parceiros_livelo:
-    renderizar_tabela_html(
-        [
-            {
-                "parceiro": parceiro["nome"],
-                "pontos por real ou dólar": parceiro["pontos_padrao"],
-                "moeda": parceiro["moeda_padrao"],
-                "atualizado em": parceiro["atualizado_em"],
-            }
-            for parceiro in parceiros_livelo
-        ],
-        colunas=[
-            ("parceiro", "Parceiro"),
-            ("pontos por real ou dólar", "Pontos por Real ou Dólar"),
-            ("moeda", "Moeda"),
-            ("atualizado em", "Atualizado em"),
-        ],
-    )
-else:
-    st.info("Nenhum parceiro Livelo cadastrado ainda.")
-
-with st.form("form_parceiro_livelo", clear_on_submit=True):
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        nome_parceiro = st.text_input("Nome do parceiro, igual aparece no BuscaPé")
-    with col2:
-        pontos_parceiro = st.number_input("Pontos por real (ou por dólar)", min_value=0.0, step=0.5)
-    with col3:
-        moeda_parceiro = st.selectbox("Moeda da taxa", ["R$", "U$"])
-
-    enviado_parceiro = st.form_submit_button("Cadastrar ou atualizar parceiro")
-    if enviado_parceiro:
-        if nome_parceiro.strip():
-            db.adicionar_parceiro_livelo_manual(nome_parceiro.strip(), pontos_parceiro, moeda_parceiro)
-            st.success(f"Parceiro {nome_parceiro} cadastrado com sucesso.")
-            st.rerun()
-        else:
-            st.warning("Digite o nome do parceiro.")
-
-if parceiros_livelo:
-    with st.expander("Remover um parceiro cadastrado"):
-        nome_para_remover = st.selectbox(
-            "Parceiro", [parceiro["nome"] for parceiro in parceiros_livelo], key="remover_parceiro_livelo",
-        )
-        if st.button("Remover parceiro selecionado"):
-            parceiro_para_remover = next(p for p in parceiros_livelo if p["nome"] == nome_para_remover)
-            db.remover_parceiro_livelo(parceiro_para_remover["codigo"])
-            st.success(f"Parceiro {nome_para_remover} removido.")
-            st.rerun()
