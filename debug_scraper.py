@@ -98,6 +98,7 @@ def rodar_buscape(termo, headless):
         headers="keys",
         tablefmt="github"
     ))
+    return ofertas
 
 
 def rodar_buscape_de_arquivo(caminho_html):
@@ -195,7 +196,10 @@ def main():
         description="testa um scraper isolado e mostra o retorno bruto no terminal",
     )
     parser.add_argument("scraper", choices=sorted(SCRAPERS.keys()), help="qual scraper rodar")
-    parser.add_argument("termo", help="produto ou loja a pesquisar, entre aspas se tiver espaco")
+    parser.add_argument(
+        "termo",
+        help="produto ou loja a pesquisar; pode conter espacos e caracteres especiais",
+    )
     parser.add_argument(
         "--mostrar-navegador",
         action="store_true",
@@ -215,7 +219,8 @@ def main():
             "util para ajustar os seletores sem gastar tempo com rede"
         ),
     )
-    args = parser.parse_args()
+    args, termos_extras = parser.parse_known_args()
+    termo = " ".join([args.termo, *termos_extras])
 
     if args.reparsear:
         if args.scraper == "buscape":
@@ -227,10 +232,10 @@ def main():
             sys.exit(1)
     else:
         funcao = SCRAPERS[args.scraper]
-        resultado = funcao(args.termo, headless=not args.mostrar_navegador)
+        resultado = funcao(termo, headless=not args.mostrar_navegador)
 
     if not args.sem_salvar:
-        caminho = _salvar_json(args.scraper, args.termo, _para_dict(resultado))
+        caminho = _salvar_json(args.scraper, termo, _para_dict(resultado))
         print(f"\nresultado completo salvo em {caminho}")
 
 

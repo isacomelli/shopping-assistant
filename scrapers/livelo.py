@@ -110,6 +110,9 @@ PADRAO_NOME = re.compile(r"logo\s+(.*?)(?=\s*(?:at[eé]\s*)?\d+\s*ponto)", re.IG
 # extrai o slug do parceiro da url, ex: /parceiros/mercado-livre/MCL
 PADRAO_SLUG_PARCEIRO = re.compile(r"/parceiros/([^/]+)/[A-Za-z0-9]+$")
 
+ALIAS_PARCEIROS = {
+    'Magalu': 'Magazine Luiza',
+}
 
 @dataclass
 class ParceiroLivelo:
@@ -121,7 +124,7 @@ class ParceiroLivelo:
     pontos_clube: float
     em_promocao: bool
     pontos_anteriores: float
-
+    alias: str
 
 class ErroScraperLivelo(Exception):
     """
@@ -194,12 +197,15 @@ def _extrair_parceiro(href, texto_completo):
     encontrado_eram = PADRAO_ERAM.search(texto)
     pontos_anteriores = float(encontrado_eram.group(1)) if encontrado_eram else 0.0
 
+    alias = ALIAS_PARCEIROS.get(nome, nome)
+
     if pontos_padrao is None:
         return None
 
     return ParceiroLivelo(
         codigo=codigo,
         nome=nome,
+        alias=alias,
         url=href,
         pontos_padrao=round(pontos_padrao, 4),
         moeda_padrao=moeda_padrao or "R$",

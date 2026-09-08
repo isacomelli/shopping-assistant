@@ -42,6 +42,7 @@ class ResultadoAutomatico:
     parceiro_encontrado: bool
     parceiro_nome: Optional[str]
     confianca_pix_cartao: bool
+    url_produto: str
 
 
 def buscar_parceiro_para_loja(nome_loja):
@@ -64,12 +65,15 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
     """
     parceiro = buscar_parceiro_para_loja(oferta_buscape.loja)
     pontos_por_real = float(parceiro["pontos_padrao"]) if parceiro else 0.0
+    parcelas_encontradas = getattr(oferta_buscape, "parcelas", 0)
+    parcelas_para_calculo = parcelas_encontradas or parcelas
 
     oferta = Oferta(
         loja=oferta_buscape.loja,
         preco_pix=oferta_buscape.preco_pix,
         preco_cartao=oferta_buscape.preco_cartao,
-        parcelas=parcelas,
+        preco=oferta_buscape.preco,
+        parcelas=parcelas_para_calculo,
         tipo="online",
         pontos_por_real=pontos_por_real,
         cotacao_dolar=cotacao_dolar,
@@ -83,7 +87,7 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
 
 def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
                                        cotacao_dolar, pontos_por_dolar_cartao_padrao,
-                                       buscador_buscape=None,
+                                       buscar_ofertas_buscape=None,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
                                        percentual_bonus_transferencia=BONUS_TRANSFERENCIA_PADRAO_PESQUISA,
                                        parcelas=PARCELAS_PADRAO_PESQUISA):
@@ -94,10 +98,10 @@ def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
     para cada loja encontrada no buscape, consulta os parceiros livelo
     ja carregados no banco no startup do app.
     """
-    if buscador_buscape is None:
-        from scrapers.buscape import buscar_ofertas_buscape as buscador_buscape
+    if buscar_ofertas_buscape is None:
+        from scrapers.buscape import buscar_ofertas_buscape
 
-    ofertas_buscape = buscador_buscape(nome_produto)
+    ofertas_buscape = buscar_ofertas_buscape(nome_produto)
 
     resultados = []
     for oferta_buscape in ofertas_buscape:
@@ -113,6 +117,7 @@ def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
                 parceiro_encontrado=parceiro is not None,
                 parceiro_nome=parceiro["nome"] if parceiro else None,
                 confianca_pix_cartao=distincao_confiavel,
+                url_produto=getattr(oferta_buscape, "url_produto", ""),
             )
         )
 

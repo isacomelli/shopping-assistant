@@ -70,7 +70,7 @@ def renderizar_tabela_html(linhas, colunas=None):
     st.markdown(tabela_html, unsafe_allow_html=True)
 
 
-def renderizar_grafico_linha_svg(rotulos, valores, altura=220, cor="#4c8bf5"):
+def renderizar_grafico_linha_svg(rotulos, valores, altura=220, cor="#4c8bf5", mostrar_valores=False):
     """
     desenha um grafico de linha simples em svg puro, sem pandas e sem
     altair, a partir de duas listas do mesmo tamanho, rotulos do eixo
@@ -83,8 +83,25 @@ def renderizar_grafico_linha_svg(rotulos, valores, altura=220, cor="#4c8bf5"):
     largura = 700
     margem_esquerda = 55
     margem_direita = 20
-    margem_topo = 20
+    margem_topo = 35 if mostrar_valores else 20
     margem_baixo = 30
+
+    tema = getattr(st.context, "theme", {}) or {}
+    tema_base = tema.get("type") or tema.get("base") or st.get_option("theme.base")
+    tema_conhecido = tema_base in {"light", "dark"}
+    tema_base = tema_base or "light"
+    cor_texto = "#f3f4f6" if tema_base == "dark" else "#000000"
+    cor_eixo = "#9ca3af" if tema_base == "dark" else "#000000"
+    estilo_tema_fallback = "" if tema_conhecido else """
+        @media (prefers-color-scheme: dark) {
+            .chart-text, .chart-muted {
+                fill: #f3f4f6 !important;
+            }
+            .chart-axis {
+                stroke: #9ca3af !important;
+            }
+        }
+    """
 
     minimo = min(valores)
     maximo = max(valores)
@@ -109,11 +126,17 @@ def renderizar_grafico_linha_svg(rotulos, valores, altura=220, cor="#4c8bf5"):
     circulos = "".join(
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="{cor}"></circle>' for x, y in pontos
     )
+    valores_svg = "".join(
+        f'<text x="{x:.1f}" y="{max(12, y - 8):.1f}" font-size="10" '
+        f'text-anchor="middle" class="chart-text" fill="{cor_texto}" font-weight="600">'
+        f'<tspan>R&#36; {valor:.2f}</tspan></text>'
+        for (x, y), valor in zip(pontos, valores)
+    ) if mostrar_valores else ""
 
     passo_rotulo = max(1, n // 6)
     rotulos_x = "".join(
         f'<text x="{pontos[i][0]:.1f}" y="{altura - 8}" font-size="10" '
-        f'text-anchor="middle" fill="currentColor" opacity="0.7">'
+        f'text-anchor="middle" class="chart-muted" fill="{cor_texto}">'
         f'{html.escape(str(rotulos[i]))}</text>'
         for i in range(0, n, passo_rotulo)
     )
@@ -121,17 +144,59 @@ def renderizar_grafico_linha_svg(rotulos, valores, altura=220, cor="#4c8bf5"):
     svg = f"""
     <svg viewBox="0 0 {largura} {altura}" width="100%" height="{altura}"
          xmlns="http://www.w3.org/2000/svg">
+        <style>
+            .chart-text, .chart-muted {{ fill: {cor_texto}; }}
+            .chart-axis {{ stroke: {cor_eixo}; }}
+            {estilo_tema_fallback}
+        </style>
         <line x1="{margem_esquerda}" y1="{margem_topo}"
               x2="{margem_esquerda}" y2="{margem_topo + area_altura}"
-              stroke="currentColor" opacity="0.3"></line>
+              class="chart-axis" opacity="0.45"></line>
         <line x1="{margem_esquerda}" y1="{margem_topo + area_altura}"
               x2="{largura - margem_direita}" y2="{margem_topo + area_altura}"
-              stroke="currentColor" opacity="0.3"></line>
-        <text x="5" y="{margem_topo + 5}" font-size="10" fill="currentColor" opacity="0.7">{maximo:.2f}</text>
-        <text x="5" y="{margem_topo + area_altura}" font-size="10" fill="currentColor" opacity="0.7">{minimo:.2f}</text>
+              class="chart-axis" opacity="0.45"></line>
+          <text x="5" y="{margem_topo + 5}" font-size="10" class="chart-muted" font-weight="600">{maximo:.2f}</text>
+          <text x="5" y="{margem_topo + area_altura}" font-size="10" class="chart-muted" font-weight="600">{minimo:.2f}</text>
         <polyline points="{linha_pontos}" fill="none" stroke="{cor}" stroke-width="2"></polyline>
         {circulos}
+        {valores_svg}
         {rotulos_x}
     </svg>
     """
-    st.markdown(svg, unsafe_allow_html=True)
+    sincronizar_tema = """
+    <script>
+    (() => {
+        try {
+            const candidatos = [
+                window.parent.document.querySelector('[data-testid="stAppViewContainer"]'),
+                window.parent.document.body,
+                window.parent.document.documentElement,
+            ];
+            let fundo = '';
+            for (const elemento of candidatos) {
+                if (!elemento) continue;
+                const cor = window.parent.getComputedStyle(elemento).backgroundColor;
+                if (cor && !cor.includes('rgba(0, 0, 0, 0)')) {
+                    fundo = cor;
+                    break;
+                }
+            }
+            const canais = fundo.match(/[\d.]+/g);
+            if (!canais || canais.length < 3) return;
+            const luminancia = (0.299 * Number(canais[0]))
+                + (0.587 * Number(canais[1]))
+                + (0.114 * Number(canais[2]));
+            const texto = luminancia < 150 ? '#f3f4f6' : '#000000';
+            const eixo = luminancia < 150 ? '#9ca3af' : '#000000';
+            document.querySelectorAll('.chart-text, .chart-muted').forEach((elemento) => {
+                elemento.style.setProperty('fill', texto, 'important');
+            });
+            document.querySelectorAll('.chart-axis').forEach((elemento) => {
+                elemento.style.setProperty('stroke', eixo, 'important');
+            });
+        } catch (erro) {
+        }
+    })();
+    </script>
+    """
+    st.html(svg + sincronizar_tema, unsafe_allow_javascript=True)

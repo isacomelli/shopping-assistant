@@ -37,6 +37,7 @@ class Oferta:
     preco_pix: float
     preco_cartao: float
     parcelas: int = 1
+    preco: float = 0.0
     tipo: str = "online"
     observacoes: str = ""
 
