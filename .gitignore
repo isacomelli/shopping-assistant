@@ -11,8 +11,8 @@ __pycache__/
 .pytest_cache/
 
 # banco de dados local, nunca deve ir para o github
-database/*.db
-database/*.db-journal
+backend/database/*.db
+backend/database/*.db-journal
 
 # playwright
 .cache/
@@ -35,6 +35,6 @@ desktop.ini
 *.swp
 
 # html de depuracao salvo pelos scrapers quando uma consulta falha
-scrapers/debug_*.html
+backend/scrapers/debug_*.html
 debug_output/*
-scrapers/perfil_navegador_buscape/*
+backend/scrapers/perfil_navegador_buscape/*

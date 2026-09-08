@@ -4,8 +4,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from database import db
+from services import pesquisa_produto
 from services.pesquisa_produto import (
-    casar_parceiro_livelo,
     montar_oferta_a_partir_do_buscape,
     pesquisar_produto_automaticamente,
 )
@@ -18,31 +19,51 @@ class OfertaBuscapeFalsa:
     preco_pix: float
     preco_cartao: float
     confianca_pix_cartao: bool = False
+    parcelas: int = 0
+    url_produto: str = ""
 
 
 PARCEIROS_FALSOS = [
-    {"nome": "Amazon", "pontos_padrao": 10.0},
-    {"nome": "Fast Shop Oficial", "pontos_padrao": 6.0},
+    {"nome": "Amazon", "alias": "Amazon", "pontos_padrao": 10.0},
+    {"nome": "Fast Shop Oficial", "alias": "Fast Shop", "pontos_padrao": 6.0},
 ]
 
 
-def test_casar_parceiro_livelo_encontra_por_substring():
-    parceiro = casar_parceiro_livelo("Fast Shop", PARCEIROS_FALSOS)
+def _parceiro_falso_por_nome(nome_loja):
+    """
+    reproduz a busca por substring feita por
+    db.buscar_parceiro_livelo_por_nome, sem depender do banco de
+    dados nem de arquivo em disco.
+    """
+    alvo = nome_loja.strip().lower()
+    for parceiro in PARCEIROS_FALSOS:
+        nome_p = parceiro["nome"].lower()
+        alias_p = parceiro["alias"].lower()
+        if nome_p == alvo or nome_p in alvo or alvo in nome_p or alvo in alias_p or alias_p in alvo:
+            return parceiro
+    return None
+
+
+def test_buscar_parceiro_para_loja_encontra_por_substring(monkeypatch):
+    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+    parceiro = pesquisa_produto.buscar_parceiro_para_loja("Fast Shop")
     assert parceiro is not None
     assert parceiro["nome"] == "Fast Shop Oficial"
 
 
-def test_casar_parceiro_livelo_nao_encontra_quando_nao_ha_parceiro():
-    parceiro = casar_parceiro_livelo("Magalu", PARCEIROS_FALSOS)
+def test_buscar_parceiro_para_loja_nao_encontra_quando_nao_ha_parceiro(monkeypatch):
+    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+    parceiro = pesquisa_produto.buscar_parceiro_para_loja("Magalu")
     assert parceiro is None
 
 
-def test_montar_oferta_usa_pontos_do_parceiro_casado():
+def test_montar_oferta_usa_pontos_do_parceiro_casado(monkeypatch):
+    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
     oferta_buscape = OfertaBuscapeFalsa(
         loja="Amazon", preco=1000, preco_pix=950, preco_cartao=1000, confianca_pix_cartao=True,
     )
     oferta, parceiro, distincao_confiavel = montar_oferta_a_partir_do_buscape(
-        oferta_buscape, PARCEIROS_FALSOS, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
+        oferta_buscape, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
     )
     assert parceiro["nome"] == "Amazon"
     assert oferta.pontos_por_real == 10.0
@@ -52,16 +73,19 @@ def test_montar_oferta_usa_pontos_do_parceiro_casado():
     assert distincao_confiavel is True
 
 
-def test_montar_oferta_zera_pontos_quando_parceiro_nao_encontrado():
+def test_montar_oferta_zera_pontos_quando_parceiro_nao_encontrado(monkeypatch):
+    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
     oferta_buscape = OfertaBuscapeFalsa(loja="Magalu", preco=1000, preco_pix=1000, preco_cartao=1000)
     oferta, parceiro, _ = montar_oferta_a_partir_do_buscape(
-        oferta_buscape, PARCEIROS_FALSOS, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
+        oferta_buscape, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
     )
     assert parceiro is None
     assert oferta.pontos_por_real == 0.0
 
 
-def test_pesquisar_produto_automaticamente_ranqueia_do_mais_barato_para_o_mais_caro():
+def test_pesquisar_produto_automaticamente_ranqueia_do_mais_barato_para_o_mais_caro(monkeypatch):
+    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+
     def buscador_falso(nome_produto):
         return [
             OfertaBuscapeFalsa(loja="Fast Shop Oficial", preco=1200, preco_pix=1150, preco_cartao=1200),
@@ -71,11 +95,10 @@ def test_pesquisar_produto_automaticamente_ranqueia_do_mais_barato_para_o_mais_c
 
     resultados = pesquisar_produto_automaticamente(
         "geladeira teste",
-        parceiros_cadastrados=PARCEIROS_FALSOS,
         cdi_mensal=1.1,
         cotacao_dolar=5.3,
         pontos_por_dolar_cartao_padrao=3.0,
-        buscador_buscape=buscador_falso,
+        buscar_ofertas_buscape=buscador_falso,
     )
 
     assert len(resultados) == 3

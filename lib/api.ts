@@ -1,0 +1,119 @@
+import type {
+  Cartao,
+  HistoricoItem,
+  Oferta,
+  OfertaPayload,
+  ParcelaSimulada,
+  Perfil,
+  Produto,
+  ResultadoAutomatico,
+} from "./types";
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+class ErroApi extends Error {
+  status: number;
+
+  constructor(status: number, mensagem: string) {
+    super(mensagem);
+    this.status = status;
+  }
+}
+
+async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
+  const resposta = await fetch(`${BASE_URL}${caminho}`, {
+    ...opcoes,
+    headers: {
+      "Content-Type": "application/json",
+      ...opcoes.headers,
+    },
+    cache: "no-store",
+  });
+
+  if (!resposta.ok) {
+    let detalhe = resposta.statusText;
+    try {
+      const corpo = await resposta.json();
+      detalhe = corpo.detail || detalhe;
+    } catch {
+      // corpo sem json, mantem o statusText
+    }
+    throw new ErroApi(resposta.status, detalhe);
+  }
+
+  if (resposta.status === 204) {
+    return undefined as T;
+  }
+
+  return resposta.json() as Promise<T>;
+}
+
+export const api = {
+  // perfil
+  obterPerfil: () => requisitar<Perfil>("/perfil"),
+  salvarPerfil: (payload: Perfil) =>
+    requisitar<Perfil>("/perfil", { method: "PUT", body: JSON.stringify(payload) }),
+  obterCotacaoDolar: () =>
+    requisitar<{ cotacao_dolar: number | null; encontrada: boolean }>("/perfil/cotacao-dolar"),
+
+  // cartoes
+  listarCartoes: () => requisitar<Cartao[]>("/perfil/cartoes"),
+  adicionarCartao: (payload: { nome: string; pontos_por_dolar: number; cashback_pct: number }) =>
+    requisitar<Cartao[]>("/perfil/cartoes", { method: "POST", body: JSON.stringify(payload) }),
+  removerCartao: (cartaoId: number) =>
+    requisitar<Cartao[]>(`/perfil/cartoes/${cartaoId}`, { method: "DELETE" }),
+
+  // produtos, a wishlist
+  listarProdutos: () => requisitar<Produto[]>("/produtos"),
+  obterProduto: (produtoId: number) => requisitar<Produto>(`/produtos/${produtoId}`),
+  criarProduto: (payload: { nome: string; categoria: string; orcamento: number; preco_alvo: number }) =>
+    requisitar<Produto>("/produtos", { method: "POST", body: JSON.stringify(payload) }),
+  atualizarProduto: (
+    produtoId: number,
+    payload: { nome: string; categoria: string; orcamento: number; preco_alvo: number },
+  ) => requisitar<Produto>(`/produtos/${produtoId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  atualizarStatusProduto: (produtoId: number, status: string) =>
+    requisitar<Produto>(`/produtos/${produtoId}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
+  excluirProduto: (produtoId: number) =>
+    requisitar<void>(`/produtos/${produtoId}`, { method: "DELETE" }),
+
+  // ofertas
+  listarOfertas: (produtoId: number) => requisitar<Oferta[]>(`/produtos/${produtoId}/ofertas`),
+  criarOferta: (produtoId: number, payload: OfertaPayload) =>
+    requisitar<Oferta>(`/produtos/${produtoId}/ofertas`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  atualizarOferta: (produtoId: number, ofertaId: number, payload: OfertaPayload) =>
+    requisitar<Oferta>(`/produtos/${produtoId}/ofertas/${ofertaId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  excluirOferta: (produtoId: number, ofertaId: number) =>
+    requisitar<void>(`/produtos/${produtoId}/ofertas/${ofertaId}`, { method: "DELETE" }),
+  pesquisarAutomaticamente: (produtoId: number) =>
+    requisitar<ResultadoAutomatico[]>(`/produtos/${produtoId}/pesquisar`, { method: "POST" }),
+  simularParcelamento: (payload: {
+    preco_pix: number;
+    preco_cartao: number;
+    cdi_mensal: number;
+    max_parcelas?: number;
+  }) =>
+    requisitar<ParcelaSimulada[]>("/simular-parcelamento", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  // historico
+  listarHistorico: (produtoId: number) =>
+    requisitar<HistoricoItem[]>(`/produtos/${produtoId}/historico`),
+  excluirHistorico: (produtoId: number, registroId: number) =>
+    requisitar<void>(`/produtos/${produtoId}/historico/${registroId}`, { method: "DELETE" }),
+  obterOfertaDoHistorico: (produtoId: number, registroId: number) =>
+    requisitar<Oferta>(`/produtos/${produtoId}/historico/${registroId}/oferta`),
+};
+
+export { ErroApi };
