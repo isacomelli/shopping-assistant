@@ -2,33 +2,26 @@
 orquestrador da pesquisa automatica de um produto.
 
 este modulo junta duas fontes de dados para montar uma oferta por
-loja automaticamente, sem que voce precise digitar nada na mao na
-maioria dos casos.
+loja automaticamente, sem que voce precise digitar nada na mao.
 
 primeiro, o buscape e consultado para descobrir o preco e a lista de
 lojas que vendem o produto, ver scrapers/buscape.py.
 
-segundo, para cada loja encontrada, o modulo tenta casar o nome da
-loja com um parceiro ja cadastrado na tabela livelo_parceiros, pelo
-nome. essa tabela nao e mais alimentada por um scraper automatico da
-livelo, porque o site bloqueia qualquer acesso automatizado a nivel
-de dominio, atraves do akamai, o bloqueio acontece antes mesmo do
-conteudo da pagina carregar, entao nao importa qual pagina do site e
-consultada, o resultado e sempre access denied, ver o html salvo em
-scrapers/debug_livelo.html. por isso a tabela e mantida por cadastro
-manual, feito uma vez por parceiro em app.py e reaproveitado em todas
-as pesquisas seguintes.
+segundo, para cada loja encontrada, o modulo consulta os parceiros
+livelo ja carregados no banco de dados no startup do app. quando a
+loja e parceira, o resultado traz a pontuacao por real ou por dolar.
+quando nao e, o resultado so marca isso, com pontos_por_real zerado e
+parceiro_encontrado como False, a oferta continua aparecendo no
+ranking normalmente, so sem pontos.
 
-quando uma loja encontrada no buscape nao bate com nenhum parceiro
-cadastrado, o resultado marca isso claramente, com pontos_por_real
-zerado e parceiro_encontrado como False, para voce saber que precisa
-cadastrar esse parceiro ou editar a oferta manualmente com o botao
-editar variaveis.
+nao existe mais consulta live ao site da livelo durante a pesquisa de
+produto, o que elimina o gargalo de abrir o playwright para cada loja.
 """
 
 from dataclasses import dataclass
 from typing import Optional
 
+from database import db
 from engine.price_engine import Oferta, ResultadoOferta, calcular_oferta
 
 VALOR_MILHEIRO_PADRAO_PESQUISA = 15.0
@@ -40,8 +33,8 @@ PARCELAS_PADRAO_PESQUISA = 6
 class ResultadoAutomatico:
     """
     resultado de uma loja encontrada automaticamente, com a oferta
-    montada, o parceiro livelo casado, quando houver, e o calculo
-    ja pronto para mostrar na tela.
+    montada, o parceiro livelo encontrado na busca, quando houver, e
+    o calculo ja pronto para mostrar na tela.
     """
 
     oferta: Oferta
@@ -49,53 +42,38 @@ class ResultadoAutomatico:
     parceiro_encontrado: bool
     parceiro_nome: Optional[str]
     confianca_pix_cartao: bool
+    url_produto: str
 
 
-def _normalizar_nome_loja(nome):
-    return " ".join(nome.strip().lower().split())
-
-
-def casar_parceiro_livelo(nome_loja, parceiros_cadastrados):
+def buscar_parceiro_para_loja(nome_loja):
     """
-    tenta encontrar, entre os parceiros ja cadastrados manualmente,
-    aquele cujo nome mais se aproxima do nome da loja encontrada no
-    buscape.
-
-    usa comparacao simples de substring nos dois sentidos, o
-    suficiente para nomes como "fast shop" e "fast shop oficial", mas
-    nomes bem diferentes do mesmo grupo, tipo "magazine luiza" contra
-    o apelido "magalu", ainda vao exigir que voce cadastre o parceiro
-    usando o mesmo nome que aparece nos resultados do buscape, ou um
-    apelido reconhecivel.
+    pesquisa a loja nos parceiros livelo ja carregados no banco de
+    dados no startup do app. devolve o primeiro parceiro casado, ou
+    none quando a loja nao for parceira.
     """
-    nome_normalizado = _normalizar_nome_loja(nome_loja)
-    for parceiro in parceiros_cadastrados:
-        nome_parceiro_normalizado = _normalizar_nome_loja(parceiro["nome"])
-        if nome_normalizado in nome_parceiro_normalizado or nome_parceiro_normalizado in nome_normalizado:
-            return parceiro
-    return None
+    return db.buscar_parceiro_livelo_por_nome(nome_loja)
 
 
-def montar_oferta_a_partir_do_buscape(oferta_buscape, parceiros_cadastrados, cotacao_dolar,
+def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
                                        pontos_por_dolar_cartao_padrao,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
                                        percentual_bonus_transferencia=BONUS_TRANSFERENCIA_PADRAO_PESQUISA,
                                        parcelas=PARCELAS_PADRAO_PESQUISA):
     """
     monta uma Oferta pronta para calculo a partir de uma oferta
-    encontrada no buscape, ja tentando casar com um parceiro livelo
-    cadastrado manualmente. devolve a oferta, o parceiro casado, ou
-    none quando nao encontrado, e se a distincao entre pix e cartao
-    veio confiavel do buscape.
+    encontrada no buscape, consultando os parceiros livelo em cache.
     """
-    parceiro = casar_parceiro_livelo(oferta_buscape.loja, parceiros_cadastrados)
+    parceiro = buscar_parceiro_para_loja(oferta_buscape.loja)
     pontos_por_real = float(parceiro["pontos_padrao"]) if parceiro else 0.0
+    parcelas_encontradas = getattr(oferta_buscape, "parcelas", 0)
+    parcelas_para_calculo = parcelas_encontradas or parcelas
 
     oferta = Oferta(
         loja=oferta_buscape.loja,
         preco_pix=oferta_buscape.preco_pix,
         preco_cartao=oferta_buscape.preco_cartao,
-        parcelas=parcelas,
+        preco=oferta_buscape.preco,
+        parcelas=parcelas_para_calculo,
         tipo="online",
         pontos_por_real=pontos_por_real,
         cotacao_dolar=cotacao_dolar,
@@ -107,9 +85,9 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, parceiros_cadastrados, cot
     return oferta, parceiro, oferta_buscape.confianca_pix_cartao
 
 
-def pesquisar_produto_automaticamente(nome_produto, parceiros_cadastrados, cdi_mensal,
+def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
                                        cotacao_dolar, pontos_por_dolar_cartao_padrao,
-                                       buscador_buscape=None,
+                                       buscar_ofertas_buscape=None,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
                                        percentual_bonus_transferencia=BONUS_TRANSFERENCIA_PADRAO_PESQUISA,
                                        parcelas=PARCELAS_PADRAO_PESQUISA):
@@ -117,21 +95,18 @@ def pesquisar_produto_automaticamente(nome_produto, parceiros_cadastrados, cdi_m
     pesquisa um produto no buscape e devolve o ranking automatico de
     ofertas, ja calculado da mais barata para a mais cara.
 
-    buscador_buscape e injetavel para facilitar teste sem depender de
-    rede real ou do playwright, por padrao usa
-    scrapers.buscape.buscar_ofertas_buscape. deixa propagar
-    ErroScraperBuscape quando a busca falhar, o chamador decide como
-    mostrar isso na tela.
+    para cada loja encontrada no buscape, consulta os parceiros livelo
+    ja carregados no banco no startup do app.
     """
-    if buscador_buscape is None:
-        from scrapers.buscape import buscar_ofertas_buscape as buscador_buscape
+    if buscar_ofertas_buscape is None:
+        from scrapers.buscape import buscar_ofertas_buscape
 
-    ofertas_buscape = buscador_buscape(nome_produto)
+    ofertas_buscape = buscar_ofertas_buscape(nome_produto)
 
     resultados = []
     for oferta_buscape in ofertas_buscape:
         oferta, parceiro, distincao_confiavel = montar_oferta_a_partir_do_buscape(
-            oferta_buscape, parceiros_cadastrados, cotacao_dolar, pontos_por_dolar_cartao_padrao,
+            oferta_buscape, cotacao_dolar, pontos_por_dolar_cartao_padrao,
             valor_milheiro, percentual_bonus_transferencia, parcelas,
         )
         resultado = calcular_oferta(oferta, cdi_mensal)
@@ -142,6 +117,7 @@ def pesquisar_produto_automaticamente(nome_produto, parceiros_cadastrados, cdi_m
                 parceiro_encontrado=parceiro is not None,
                 parceiro_nome=parceiro["nome"] if parceiro else None,
                 confianca_pix_cartao=distincao_confiavel,
+                url_produto=getattr(oferta_buscape, "url_produto", ""),
             )
         )
 

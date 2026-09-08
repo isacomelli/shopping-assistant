@@ -106,8 +106,8 @@ Segundo, é melhor não rodar o scraper com muita frequência. O app já foi pen
 
 ## Limitações do MVP atual
 
-Livelo tem o scraper pronto. Esfera e Méliuz ainda não, o plano é seguir o mesmo padrão do scraper da Livelo para os dois. A busca automática de preços via BuscaPé ou Google Shopping também ainda não existe, hoje as ofertas são cadastradas manualmente na calculadora, incluindo as de loja física e negociação presencial.
+Livelo tem o scraper pronto. Esfera e Méliuz ainda não, o plano é seguir o mesmo padrão do scraper da Livelo para os dois. A busca automática de preços via Buscapé ou Google Shopping também ainda não existe, hoje as ofertas são cadastradas manualmente na calculadora, incluindo as de loja física e negociação presencial.
 
 ## Próximos passos sugeridos
 
-Primeiro, scraper de Esfera e Méliuz, seguindo o mesmo padrão do de Livelo. Depois, busca automática de preços por produto via BuscaPé ou Google Shopping. Por fim, o recurso de bater preço entre uma oferta online e uma oportunidade de loja física, comparando lado a lado para apoiar a negociação.
+Primeiro, scraper de Esfera e Méliuz, seguindo o mesmo padrão do de Livelo. Depois, busca automática de preços por produto via Buscapé ou Google Shopping. Por fim, o recurso de bater preço entre uma oferta online e uma oportunidade de loja física, comparando lado a lado para apoiar a negociação.

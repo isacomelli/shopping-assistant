@@ -77,8 +77,11 @@ na calculadora, atraves do botao editar variaveis.
 """
 
 import re
+import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
@@ -92,6 +95,7 @@ CAMINHO_DEBUG_HTML = Path(__file__).parent / "debug_buscape.html"
 # serve para ajustar os seletores abaixo sem precisar abrir o
 # navegador de novo, veja parsear_html_buscape e debug_scraper.py
 CAMINHO_ULTIMO_HTML = Path(__file__).parent / "ultimo_html_buscape.html"
+PASTA_DEBUG_RESULTADOS = Path(__file__).parent.parent / "debug_output"
 
 # pasta usada pelo guia normal do playwright, para persistir
 # cookies e armazenamento entre execucoes, parecido com uma aba comum
@@ -315,7 +319,7 @@ def _determinar_precos_pix_cartao(preco, parcelas, valor_parcela):
     como confiavel.
     """
     if parcelas <= 1 or valor_parcela <= 0:
-        return 0.0, 0.0, False
+        return round(preco, 2), round(preco, 2), False
 
     preco_pix = round(preco, 2)
     preco_cartao = round(parcelas * valor_parcela, 2)
@@ -541,7 +545,7 @@ def _coletar_ofertas_em_guia(playwright, termo, headless, timeout_ms, max_pagina
     guia.add_init_script(SCRIPT_ANTI_DETECCAO)
     pagina = guia.new_page()
 
-    url = URL_BUSCA.format(termo=termo.replace(" ", "+"))
+    url = URL_BUSCA.format(termo=quote_plus(termo, safe=""))
     ofertas_coletadas = []
     html_primeira_pagina = ""
 
@@ -633,19 +637,40 @@ def _chave_deduplicacao(oferta):
 def _unir_ofertas(*listas_de_ofertas):
     """
     junta as listas de ofertas vindas de cada guia, aba normal e
-    aba anonima, removendo duplicatas pela chave de deduplicacao,
-    mantendo a primeira ocorrencia encontrada.
+    anonima, removendo duplicatas pela chave de deduplicacao e
+    marcando como ambos as ofertas encontradas nas duas guias.
     """
-    vistas = set()
+    indices_por_chave = {}
     ofertas_unicas = []
     for lista in listas_de_ofertas:
         for oferta in lista:
             chave = _chave_deduplicacao(oferta)
-            if chave in vistas:
+            indice_existente = indices_por_chave.get(chave)
+            if indice_existente is not None:
+                oferta_existente = ofertas_unicas[indice_existente]
+                if oferta_existente.guia != oferta.guia:
+                    oferta_existente.guia = "ambos"
                 continue
-            vistas.add(chave)
+            indices_por_chave[chave] = len(ofertas_unicas)
             ofertas_unicas.append(oferta)
     return ofertas_unicas
+
+
+def _salvar_resultados_debug(nome_produto, ofertas):
+    """Salva o retorno bruto da pesquisa para comparar execucoes."""
+    PASTA_DEBUG_RESULTADOS.mkdir(exist_ok=True)
+    carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+    slug = re.sub(r"[^a-z0-9]+", "_", nome_produto.lower()).strip("_")[:80]
+    caminho = PASTA_DEBUG_RESULTADOS / f"buscape_{slug or 'sem_termo'}_{carimbo}.json"
+    dados = [
+        {
+            campo: valor
+            for campo, valor in oferta.__dict__.items()
+        }
+        for oferta in ofertas
+    ]
+    caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+    return caminho
 
 
 def parsear_html_buscape(html):
@@ -747,7 +772,9 @@ def buscar_ofertas_buscape(nome_produto, max_resultados=1000, timeout_ms=45000, 
             "na calculadora enquanto isso"
         )
 
-    return ofertas[:max_resultados]
+    ofertas = ofertas[:max_resultados]
+    _salvar_resultados_debug(nome_produto, ofertas)
+    return ofertas
 
 
 if __name__ == "__main__":

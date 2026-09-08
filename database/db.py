@@ -11,18 +11,18 @@ primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE
 dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja
 existe.
 
-sobre a tabela livelo_parceiros, ela nao e mais alimentada por um
-scraper automatico. o site da livelo bloqueia qualquer acesso
-automatizado a nivel de dominio, atraves do akamai, entao a tabela
-agora e mantida por cadastro manual, feito uma vez por parceiro em
-app.py e reaproveitado pela pesquisa automatica em services/pesquisa_produto.py.
+sobre a livelo, a pesquisa automatica em
+services/pesquisa_produto.py consulta a busca da livelo direto por
+loja, em scrapers/livelo.py, nao existe mais tabela nem cadastro
+manual de parceiro aqui.
 """
 
-import re
 import sqlite3
-import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
+import json
+import re
+from datetime import datetime
 
 CAMINHO_BANCO = Path(__file__).parent / "shopping.db"
 
@@ -74,6 +74,23 @@ def _migrar_colunas_novas(conn):
     )
     _adicionar_coluna_se_nao_existir(
         conn, "ofertas", "valor_milheiro REAL NOT NULL DEFAULT 0",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "url_produto TEXT",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "preco REAL NOT NULL DEFAULT 0",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "atualizada_em TEXT",
+    )
+    _adicionar_coluna_se_nao_existir(conn, "historico_precos", "preco REAL")
+    _adicionar_coluna_se_nao_existir(conn, "historico_precos", "preco_pix REAL")
+    _adicionar_coluna_se_nao_existir(conn, "historico_precos", "preco_cartao REAL")
+    _adicionar_coluna_se_nao_existir(conn, "historico_precos", "parcelas INTEGER")
+    conn.execute(
+        "UPDATE ofertas SET atualizada_em = COALESCE(criado_em, CURRENT_TIMESTAMP) "
+        "WHERE atualizada_em IS NULL"
     )
 
 
@@ -127,6 +144,8 @@ def inicializar_banco():
                 validade TEXT,
                 confianca TEXT NOT NULL DEFAULT 'confirmada',
                 preco_efetivo REAL,
+                url_produto TEXT,
+                atualizada_em TEXT DEFAULT CURRENT_TIMESTAMP,
                 criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (produto_id) REFERENCES produtos(id)
             );
@@ -140,22 +159,21 @@ def inicializar_banco():
                 registrado_em TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (produto_id) REFERENCES produtos(id)
             );
-
-            CREATE TABLE IF NOT EXISTS livelo_parceiros (
-                codigo TEXT PRIMARY KEY,
-                nome TEXT NOT NULL,
-                url TEXT NOT NULL,
-                pontos_padrao REAL,
-                moeda_padrao TEXT,
-                pontos_clube REAL,
-                em_promocao INTEGER,
-                pontos_anteriores REAL,
-                atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
-            );
             """
         )
 
+        # a tabela livelo_parceiros existia para o cadastro manual de
+        # parceiros, feature removida, a pesquisa automatica agora
+        # consulta a livelo direto por loja, ver
+        # services/pesquisa_produto.py e scrapers/livelo.py. este drop
+        # limpa a tabela em bancos que ja existiam antes dessa
+        # mudanca, sem afetar nenhuma outra tabela
+        conn.execute("DROP TABLE IF EXISTS livelo_parceiros")
+
         _migrar_colunas_novas(conn)
+        _consolidar_ofertas(conn)
+        _preencher_historico_das_ofertas(conn)
+        _consolidar_historico(conn)
 
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
@@ -247,7 +265,165 @@ def atualizar_status_produto(produto_id, status):
         )
 
 
+def atualizar_produto(produto_id, nome, categoria, orcamento, preco_alvo):
+    with conexao() as conn:
+        conn.execute(
+            """
+            UPDATE produtos
+            SET nome = ?, categoria = ?, orcamento = ?, preco_alvo = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (nome, categoria, orcamento, preco_alvo, produto_id, USER_ID_PADRAO),
+        )
+
+
+def excluir_produto(produto_id):
+    with conexao() as conn:
+        conn.execute(
+            "DELETE FROM historico_precos WHERE produto_id = ?", (produto_id,)
+        )
+        conn.execute("DELETE FROM ofertas WHERE produto_id = ?", (produto_id,))
+        conn.execute(
+            "DELETE FROM produtos WHERE id = ? AND user_id = ?",
+            (produto_id, USER_ID_PADRAO),
+        )
+
+
 # ofertas
+
+def _chave_oferta_automatica(linha):
+    preco = linha["preco"] or linha["preco_pix"] or linha["preco_cartao"] or 0
+    return (
+        re.sub(r"\s+", " ", (linha["loja"] or "").strip().lower()),
+        round(float(preco), 2),
+        round(float(linha["preco_pix"] or 0), 2),
+        round(float(linha["preco_cartao"] or 0), 2),
+        int(linha["parcelas"] or 1),
+    )
+
+
+def _consolidar_ofertas(conn):
+    linhas = conn.execute(
+        """
+        SELECT * FROM ofertas
+        WHERE user_id = ?
+        ORDER BY produto_id, criado_em, id
+        """,
+        (USER_ID_PADRAO,),
+    ).fetchall()
+    mantidas = {}
+    for linha in linhas:
+        chave = (linha["produto_id"], _chave_oferta_automatica(linha))
+        anterior = mantidas.get(chave)
+        if anterior is None:
+            mantidas[chave] = linha
+            continue
+        conn.execute(
+            "UPDATE ofertas SET atualizada_em = COALESCE(?, atualizada_em) WHERE id = ?",
+            (linha["atualizada_em"] or linha["criado_em"], anterior["id"]),
+        )
+        conn.execute("DELETE FROM ofertas WHERE id = ?", (linha["id"],))
+
+
+def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+                              pontos_por_real, pontos_por_dolar_cartao,
+                              percentual_bonus_transferencia, valor_milheiro, cashback_pct,
+                              frete, cupom, observacoes, validade, confianca, preco_efetivo,
+                              preco=0,
+                              url_produto=""):
+    chave_oferta = (
+        re.sub(r"\s+", " ", loja.strip().lower()),
+        round(float(preco or preco_pix or preco_cartao or 0), 2),
+        round(float(preco_pix or 0), 2),
+        round(float(preco_cartao or 0), 2),
+        int(parcelas or 1),
+    )
+    with conexao() as conn:
+        linhas = conn.execute(
+            """
+            SELECT * FROM ofertas
+            WHERE produto_id = ? AND user_id = ?
+            ORDER BY id
+            """,
+            (produto_id, USER_ID_PADRAO),
+        ).fetchall()
+        correspondentes = [
+            item for item in linhas if _chave_oferta_automatica(item) == chave_oferta
+        ]
+        linha = correspondentes[0] if correspondentes else None
+        for duplicata in correspondentes[1:]:
+            conn.execute("DELETE FROM ofertas WHERE id = ?", (duplicata["id"],))
+        chave_url = (url_produto or "").strip()
+
+        valores = (
+            loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real,
+            pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro,
+            cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo,
+            chave_url or None,
+        )
+        if linha:
+            conn.execute(
+                """
+                UPDATE ofertas
+                SET loja = ?, tipo = ?, preco_pix = ?, preco_cartao = ?, parcelas = ?,
+                    pontos_por_real = ?, pontos_por_dolar_cartao = ?,
+                    percentual_bonus_transferencia = ?, valor_milheiro = ?,
+                    cashback_pct = ?, frete = ?, cupom = ?, observacoes = ?,
+                    validade = ?, confianca = ?, preco_efetivo = ?, url_produto = ?,
+                    preco = ?, atualizada_em = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ?
+                """,
+                valores + (preco or preco_pix or preco_cartao or 0, linha["id"], USER_ID_PADRAO),
+            )
+            return linha["id"], False
+
+        cursor = conn.execute(
+            """
+            INSERT INTO ofertas (
+                produto_id, user_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+                pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
+                confianca, preco_efetivo, url_produto, atualizada_em
+                , preco
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            """,
+            (produto_id, USER_ID_PADRAO) + valores + (preco or preco_pix or preco_cartao or 0,),
+        )
+        return cursor.lastrowid, True
+
+
+def excluir_oferta(oferta_id, produto_id):
+    with conexao() as conn:
+        oferta = conn.execute(
+            "SELECT * FROM ofertas WHERE id = ? AND produto_id = ? AND user_id = ?",
+            (oferta_id, produto_id, USER_ID_PADRAO),
+        ).fetchone()
+        if not oferta:
+            return False
+
+        chave = _chave_oferta_automatica(oferta)
+        chave_exibicao = (
+            re.sub(r"\s+", " ", (oferta["loja"] or "").strip().lower()),
+            round(float(oferta["preco_cartao"] or 0), 2),
+            round(float(oferta["preco_efetivo"] or 0), 2),
+        )
+        historicos = conn.execute(
+            "SELECT * FROM historico_precos WHERE produto_id = ?",
+            (produto_id,),
+        ).fetchall()
+        for historico in historicos:
+            chave_historico_exibicao = _chave_historico_exibicao(historico)
+            if (
+                _chave_historico(historico) == chave
+                or chave_historico_exibicao == chave_exibicao
+            ):
+                conn.execute("DELETE FROM historico_precos WHERE id = ?", (historico["id"],))
+
+        conn.execute(
+            "DELETE FROM ofertas WHERE id = ? AND produto_id = ? AND user_id = ?",
+            (oferta_id, produto_id, USER_ID_PADRAO),
+        )
+        return True
 
 def listar_ofertas_por_produto(produto_id):
     with conexao() as conn:
@@ -268,8 +444,8 @@ def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
                 produto_id, user_id, loja, tipo, preco_pix, preco_cartao, parcelas,
                 pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
                 valor_milheiro, cashback_pct, frete, cupom,
-                observacoes, validade, confianca, preco_efetivo
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                observacoes, validade, confianca, preco_efetivo, atualizada_em
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 produto_id, USER_ID_PADRAO, loja, tipo, preco_pix, preco_cartao, parcelas,
@@ -280,17 +456,196 @@ def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
         )
 
 
-# historico de precos
-
-def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo):
+def atualizar_oferta(oferta_id, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+                     pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                     valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
+                     confianca, preco_efetivo, preco=0):
     with conexao() as conn:
+        anterior = conn.execute(
+            "SELECT * FROM ofertas WHERE id = ? AND produto_id = ? AND user_id = ?",
+            (oferta_id, produto_id, USER_ID_PADRAO),
+        ).fetchone()
+        if not anterior:
+            return False
+
+        nova_chave = {
+            "loja": loja,
+            "preco": preco or preco_pix or preco_cartao,
+            "preco_pix": preco_pix,
+            "preco_cartao": preco_cartao,
+            "parcelas": parcelas,
+        }
         conn.execute(
             """
-            INSERT INTO historico_precos (produto_id, loja, preco_anunciado, preco_efetivo)
-            VALUES (?, ?, ?, ?)
+            UPDATE ofertas
+            SET loja = ?, tipo = ?, preco_pix = ?, preco_cartao = ?, parcelas = ?,
+                pontos_por_real = ?, pontos_por_dolar_cartao = ?,
+                percentual_bonus_transferencia = ?, valor_milheiro = ?,
+                cashback_pct = ?, frete = ?, cupom = ?, observacoes = ?,
+                validade = ?, confianca = ?, preco_efetivo = ?, preco = ?,
+                atualizada_em = CURRENT_TIMESTAMP
+            WHERE id = ? AND produto_id = ? AND user_id = ?
             """,
-            (produto_id, loja, preco_anunciado, preco_efetivo),
+            (
+                loja, tipo, preco_pix, preco_cartao, parcelas,
+                pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                valor_milheiro, cashback_pct, frete, cupom, observacoes,
+                validade, confianca, preco_efetivo, preco or preco_pix or preco_cartao,
+                oferta_id, produto_id, USER_ID_PADRAO,
+            ),
         )
+
+        historicos = conn.execute(
+            "SELECT * FROM historico_precos WHERE produto_id = ?",
+            (produto_id,),
+        ).fetchall()
+        chave_anterior = _chave_oferta_automatica(anterior)
+        exibicao_anterior = (
+            re.sub(r"\s+", " ", (anterior["loja"] or "").strip().lower()),
+            round(float(anterior["preco_cartao"] or 0), 2),
+            round(float(anterior["preco_efetivo"] or 0), 2),
+        )
+        for historico in historicos:
+            chave_historico = _chave_historico(historico)
+            exibicao_historico = _chave_historico_exibicao(historico)
+            if chave_historico != chave_anterior and exibicao_historico != exibicao_anterior:
+                continue
+            conn.execute(
+                """
+                UPDATE historico_precos
+                SET loja = ?, preco_anunciado = ?, preco_efetivo = ?,
+                    preco = ?, preco_pix = ?, preco_cartao = ?, parcelas = ?
+                WHERE id = ? AND produto_id = ?
+                """,
+                (
+                    loja, preco_cartao, preco_efetivo,
+                    preco or preco_pix or preco_cartao, preco_pix, preco_cartao,
+                    parcelas or 1, historico["id"], produto_id,
+                ),
+            )
+        return True
+
+
+# historico de precos
+
+def _chave_historico(linha):
+    preco = linha["preco"] or linha["preco_pix"] or linha["preco_cartao"] or linha["preco_anunciado"] or 0
+    return (
+        re.sub(r"\s+", " ", (linha["loja"] or "").strip().lower()),
+        round(float(preco), 2),
+        round(float(linha["preco_pix"] or linha["preco_anunciado"] or 0), 2),
+        round(float(linha["preco_cartao"] or linha["preco_anunciado"] or 0), 2),
+        int(linha["parcelas"] or 1),
+    )
+
+
+def _chave_historico_exibicao(linha):
+    return (
+        re.sub(r"\s+", " ", (linha["loja"] or "").strip().lower()),
+        round(float(linha["preco_anunciado"] or 0), 2),
+        round(float(linha["preco_pix"] or linha["preco_anunciado"] or 0), 2),
+        round(float(linha["preco_efetivo"] or 0), 2),
+    )
+
+
+def _consolidar_historico(conn):
+    linhas = conn.execute(
+        "SELECT * FROM historico_precos ORDER BY registrado_em, id"
+    ).fetchall()
+    mantidas = {}
+    for linha in linhas:
+        chave = (linha["produto_id"], _chave_historico_exibicao(linha))
+        anterior = mantidas.get(chave)
+        if anterior is None:
+            mantidas[chave] = linha
+            continue
+        conn.execute(
+            """
+            UPDATE historico_precos
+            SET registrado_em = COALESCE(?, registrado_em)
+            WHERE id = ?
+            """,
+            (linha["registrado_em"], anterior["id"]),
+        )
+        conn.execute("DELETE FROM historico_precos WHERE id = ?", (linha["id"],))
+
+
+def _preencher_historico_das_ofertas(conn):
+    ofertas = conn.execute(
+        "SELECT * FROM ofertas WHERE user_id = ? ORDER BY criado_em, id",
+        (USER_ID_PADRAO,),
+    ).fetchall()
+    historicos = conn.execute("SELECT * FROM historico_precos").fetchall()
+    chaves_existentes = {
+        (linha["produto_id"], linha["registrado_em"][:10], _chave_historico_exibicao(linha))
+        for linha in historicos
+    }
+    for oferta in ofertas:
+        preco_anunciado = oferta["preco_cartao"] or oferta["preco_pix"] or 0
+        registro = {
+            "loja": oferta["loja"],
+            "preco_anunciado": preco_anunciado,
+            "preco_pix": oferta["preco_pix"] or preco_anunciado,
+            "preco_efetivo": oferta["preco_efetivo"],
+        }
+        chave = (
+            oferta["produto_id"],
+            (oferta["criado_em"] or oferta["atualizada_em"] or "")[:10],
+            _chave_historico_exibicao(registro),
+        )
+        if chave in chaves_existentes:
+            continue
+        conn.execute(
+            """
+            INSERT INTO historico_precos (
+                produto_id, loja, preco_anunciado, preco_efetivo,
+                registrado_em, preco, preco_pix, preco_cartao, parcelas
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                oferta["produto_id"], oferta["loja"], preco_anunciado,
+                oferta["preco_efetivo"], oferta["criado_em"] or oferta["atualizada_em"],
+                oferta["preco"] or oferta["preco_pix"] or preco_anunciado,
+                oferta["preco_pix"] or preco_anunciado,
+                oferta["preco_cartao"] or preco_anunciado,
+                oferta["parcelas"] or 1,
+            ),
+        )
+        chaves_existentes.add(chave)
+
+
+def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo,
+                        preco=0, preco_pix=0, preco_cartao=0, parcelas=1):
+    with conexao() as conn:
+        chave = _chave_historico_exibicao({
+            "loja": loja,
+            "preco_anunciado": preco_anunciado,
+            "preco_pix": preco_pix or preco_anunciado,
+            "preco_efetivo": preco_efetivo,
+        })
+        existentes = conn.execute(
+            "SELECT * FROM historico_precos WHERE produto_id = ?",
+            (produto_id,),
+        ).fetchall()
+        if any(_chave_historico_exibicao(linha) == chave for linha in existentes):
+            linha = next(linha for linha in existentes if _chave_historico_exibicao(linha) == chave)
+            conn.execute(
+                "UPDATE historico_precos SET registrado_em = CURRENT_TIMESTAMP WHERE id = ?",
+                (linha["id"],),
+            )
+            return False
+        conn.execute(
+            """
+            INSERT INTO historico_precos (
+                produto_id, loja, preco_anunciado, preco_efetivo,
+                preco, preco_pix, preco_cartao, parcelas
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (produto_id, loja, preco_anunciado, preco_efetivo,
+             preco or preco_anunciado, preco_pix or preco_anunciado,
+             preco_cartao or preco_anunciado, parcelas or 1),
+        )
+        return True
 
 
 def listar_historico(produto_id):
@@ -299,94 +654,180 @@ def listar_historico(produto_id):
             "SELECT * FROM historico_precos WHERE produto_id = ? ORDER BY registrado_em",
             (produto_id,),
         ).fetchall()
-        return [dict(linha) for linha in linhas]
+        unicas = {}
+        for linha in linhas:
+            registro = dict(linha)
+            chave = _chave_historico_exibicao(registro)
+            unicas.setdefault(chave, registro)
+        return list(unicas.values())
 
 
-# parceiros livelo, cadastro manual
-#
-# a tabela nao e mais alimentada por scraper, ver o comentario no topo
-# deste arquivo. o codigo de cada parceiro manual e gerado a partir do
-# nome, para o cadastro poder ser atualizado depois pelo mesmo nome.
-
-def _slug_parceiro_manual(nome):
-    forma_normalizada = unicodedata.normalize("NFKD", nome)
-    sem_acento = "".join(c for c in forma_normalizada if not unicodedata.combining(c))
-    sem_acento = re.sub(r"[^a-zA-Z0-9\s]", "", sem_acento).strip().upper()
-    return "MANUAL-" + re.sub(r"\s+", "-", sem_acento)
-
-
-def adicionar_parceiro_livelo_manual(nome, pontos_padrao, moeda_padrao="R$"):
-    """
-    cadastra ou atualiza, pelo nome, um parceiro livelo com a taxa de
-    pontos por real ou por dolar informada a mao. e o unico jeito
-    confiavel de manter esta tabela hoje, ja que o site da livelo
-    bloqueia qualquer scraping automatizado.
-    """
-    codigo = _slug_parceiro_manual(nome)
+def encontrar_oferta_do_historico(registro_id, produto_id):
     with conexao() as conn:
-        conn.execute(
-            """
-            INSERT INTO livelo_parceiros (
-                codigo, nome, url, pontos_padrao, moeda_padrao,
-                pontos_clube, em_promocao, pontos_anteriores, atualizado_em
-            ) VALUES (?, ?, '', ?, ?, 0, 0, 0, CURRENT_TIMESTAMP)
-            ON CONFLICT(codigo) DO UPDATE SET
-                nome = excluded.nome,
-                pontos_padrao = excluded.pontos_padrao,
-                moeda_padrao = excluded.moeda_padrao,
-                atualizado_em = CURRENT_TIMESTAMP
-            """,
-            (codigo, nome.strip(), pontos_padrao, moeda_padrao),
-        )
-        return codigo
-
-
-def remover_parceiro_livelo(codigo):
-    with conexao() as conn:
-        conn.execute("DELETE FROM livelo_parceiros WHERE codigo = ?", (codigo,))
-
-
-def salvar_parceiros_livelo(parceiros):
-    """
-    mantido para compatibilidade, caso algum script antigo ainda
-    chame esta funcao passando objetos ParceiroLivelo completos.
-    """
-    with conexao() as conn:
-        for parceiro in parceiros:
-            conn.execute(
-                """
-                INSERT INTO livelo_parceiros (
-                    codigo, nome, url, pontos_padrao, moeda_padrao,
-                    pontos_clube, em_promocao, pontos_anteriores, atualizado_em
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(codigo) DO UPDATE SET
-                    nome = excluded.nome,
-                    url = excluded.url,
-                    pontos_padrao = excluded.pontos_padrao,
-                    moeda_padrao = excluded.moeda_padrao,
-                    pontos_clube = excluded.pontos_clube,
-                    em_promocao = excluded.em_promocao,
-                    pontos_anteriores = excluded.pontos_anteriores,
-                    atualizado_em = CURRENT_TIMESTAMP
-                """,
-                (
-                    parceiro.codigo, parceiro.nome, parceiro.url, parceiro.pontos_padrao,
-                    parceiro.moeda_padrao, parceiro.pontos_clube, int(parceiro.em_promocao),
-                    parceiro.pontos_anteriores,
-                ),
+        historico = conn.execute(
+            "SELECT * FROM historico_precos WHERE id = ? AND produto_id = ?",
+            (registro_id, produto_id),
+        ).fetchone()
+        if not historico:
+            return None
+        chave = _chave_historico(historico)
+        chave_exibicao = _chave_historico_exibicao(historico)
+        ofertas = conn.execute(
+            "SELECT * FROM ofertas WHERE produto_id = ? AND user_id = ?",
+            (produto_id, USER_ID_PADRAO),
+        ).fetchall()
+        for oferta in ofertas:
+            exibicao = (
+                re.sub(r"\s+", " ", (oferta["loja"] or "").strip().lower()),
+                round(float(oferta["preco_cartao"] or 0), 2),
+                round(float(oferta["preco_pix"] or oferta["preco_cartao"] or 0), 2),
+                round(float(oferta["preco_efetivo"] or 0), 2),
             )
+            if _chave_oferta_automatica(oferta) == chave or exibicao == chave_exibicao:
+                return dict(oferta)
+        return None
 
+
+def excluir_historico(registro_id, produto_id):
+    with conexao() as conn:
+        registro = conn.execute(
+            "SELECT * FROM historico_precos WHERE id = ? AND produto_id = ?",
+            (registro_id, produto_id),
+        ).fetchone()
+        if not registro:
+            return False
+
+        chave = _chave_historico(registro)
+        chave_exibicao = _chave_historico_exibicao(registro)
+        ofertas = conn.execute(
+            "SELECT * FROM ofertas WHERE produto_id = ? AND user_id = ?",
+            (produto_id, USER_ID_PADRAO),
+        ).fetchall()
+        for oferta in ofertas:
+            chave_oferta_exibicao = (
+                re.sub(r"\s+", " ", (oferta["loja"] or "").strip().lower()),
+                round(float(oferta["preco_cartao"] or 0), 2),
+                round(float(oferta["preco_pix"] or oferta["preco_cartao"] or 0), 2),
+                round(float(oferta["preco_efetivo"] or 0), 2),
+            )
+            if (
+                _chave_oferta_automatica(oferta) == chave
+                or chave_oferta_exibicao == chave_exibicao
+            ):
+                conn.execute("DELETE FROM ofertas WHERE id = ?", (oferta["id"],))
+
+        conn.execute(
+            "DELETE FROM historico_precos WHERE id = ? AND produto_id = ?",
+            (registro_id, produto_id),
+        )
+        return True
+
+
+# livelo parceiros (compatibilidade)
 
 def listar_parceiros_livelo():
-    with conexao() as conn:
-        linhas = conn.execute("SELECT * FROM livelo_parceiros ORDER BY nome").fetchall()
-        return [dict(linha) for linha in linhas]
+    """
+    Retorna a lista de parceiros Livelo/Esfera carregada a partir de um
+    arquivo ao lado do módulo (livelo_parceiros.json ou livelo_parceiros.html).
+
+    Cada parceiro é um dict com as chaves 'nome', 'alias' e
+    'pontos_padrao' (float). Se o arquivo não existir, retorna lista vazia.
+    """
+    base = Path(__file__).parent
+    html_path = base / "livelo_parceiros.html"
+    json_paths = [base / "livelo_parceiros.json"]
+    debug_dir = base.parent / "debug_output"
+    json_paths.extend(sorted(
+        debug_dir.glob("livelo_teste_*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    ))
+
+    for json_path in json_paths:
+        if not json_path.exists():
+            continue
+        try:
+            with json_path.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            parceiros = []
+            for p in data:
+                nome = str(p.get("nome", "")).strip()
+                alias = str(p.get("alias", "") or nome).strip()
+                try:
+                    pontos = float(p.get("pontos_padrao", 0.0))
+                except Exception:
+                    pontos = 0.0
+                if nome:
+                    parceiros.append({"nome": nome, "alias": alias, "pontos_padrao": pontos})
+            return parceiros
+        except Exception:
+            continue
+
+    if html_path.exists():
+        text = html_path.read_text(encoding="utf-8")
+        parceiros = []
+        # tenta extrair linhas com nome e um numero (pontos) por heurística
+        for line in text.splitlines():
+            clean = re.sub(r"<[^>]+>", "", line).strip()
+            if not clean:
+                continue
+            m = re.match(r"^(?P<n>.+?)[\s–\-—:]+(?P<p>[\d.,]+)\s*$", clean)
+            if m:
+                nome = m.group("n").strip()
+                try:
+                    pontos = float(m.group("p").replace(",", "."))
+                except Exception:
+                    pontos = 0.0
+            else:
+                nome = clean
+                pontos = 0.0
+            if nome:
+                parceiros.append({"nome": nome, "alias": nome, "pontos_padrao": pontos})
+        return parceiros
+
+    return []
 
 
-def buscar_parceiro_livelo_por_nome(termo):
-    with conexao() as conn:
-        linhas = conn.execute(
-            "SELECT * FROM livelo_parceiros WHERE nome LIKE ? ORDER BY nome",
-            (f"%{termo}%",),
-        ).fetchall()
-        return [dict(linha) for linha in linhas]
+def buscar_parceiro_livelo_por_nome(nome_loja):
+    """
+    Procura um parceiro cujo nome case com a loja informada. A comparação
+    é feita em lowercase e aceita correspondências parciais.
+
+    Retorna o dicionário do parceiro ou None se não encontrado.
+    """
+    if not nome_loja:
+        return None
+    candidatos = listar_parceiros_livelo()
+    alvo = nome_loja.strip().lower()
+
+    # primeiro tenta correspondência exata ou contida no nome ou alias
+    for p in candidatos:
+        nome_p = p.get("nome", "").strip().lower()
+        alias_p = str(p.get("alias") or p.get("nome", "")).strip().lower()
+        if not nome_p and not alias_p:
+            continue
+        if (
+            nome_p == alvo
+            or nome_p in alvo
+            or alvo in nome_p
+            or alvo in alias_p
+            or alias_p in alvo
+        ):
+            return p
+
+    # fallback: tenta tokenização simples (palavras em comum)
+    alvo_tokens = set(re.findall(r"\w+", alvo))
+    best = None
+    best_score = 0
+    for p in candidatos:
+        nome_p = p.get("nome", "").strip().lower()
+        alias_p = str(p.get("alias") or p.get("nome", "")).strip().lower()
+        tokens = set(re.findall(r"\w+", f"{nome_p} {alias_p}"))
+        score = len(alvo_tokens & tokens)
+        if score > best_score:
+            best_score = score
+            best = p
+    if best_score > 0:
+        return best
+
+    return None
