@@ -1,7 +1,7 @@
 """
 funcoes de apoio que ligam as linhas do banco ao motor de calculo.
 
-fica tudo num lugar so para as rotas em routers/ nao precisarem
+fica tudo num lugar so para as rotas em backend/ nao precisarem
 remontar o dataclass Oferta toda vez, do jeito que a pagina da
 calculadora do streamlit fazia antes.
 """
@@ -32,16 +32,21 @@ def oferta_da_linha(linha_oferta, config):
         cashback_pct=linha_oferta["cashback_pct"],
         frete=linha_oferta["frete"],
         cupom=linha_oferta["cupom"],
+        url_produto=linha_oferta["url_produto"] or "",
     )
 
 
 def oferta_do_payload(payload, config):
     """
     monta um Oferta do motor de calculo a partir do corpo recebido nas
-    rotas de criar ou editar oferta manualmente.
+    rotas de criar ou editar oferta manualmente. o formulario manual
+    nao pede um preco bruto separado, entao preco cai de volta para o
+    preco no cartao, do mesmo jeito que oferta_da_linha faz quando o
+    valor salvo esta vazio.
     """
     return Oferta(
         loja=payload.loja.strip(),
+        preco=payload.preco_cartao,
         preco_pix=payload.preco_pix,
         preco_cartao=payload.preco_cartao,
         parcelas=payload.parcelas,

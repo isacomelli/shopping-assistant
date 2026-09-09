@@ -38,3 +38,10 @@ desktop.ini
 backend/scrapers/debug_*.html
 debug_output/*
 backend/scrapers/perfil_navegador_buscape/*
+
+node_modules/
+.next/
+out/
+.env*.local
+.DS_Store
+ 

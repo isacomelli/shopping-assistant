@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import db
-from routers import historico, ofertas, perfil, produtos
+from backend import historico, ofertas, perfil, produtos
 
 ORIGENS_PERMITIDAS = os.environ.get(
     "CORS_ORIGENS", "http://localhost:3000",

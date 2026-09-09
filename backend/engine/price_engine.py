@@ -36,9 +36,19 @@ class Oferta:
     loja: str
     preco_pix: float
     preco_cartao: float
+
+    # preco bruto encontrado na pesquisa, antes de separar pix e
+    # cartao, usado so para registro no historico de precos, o
+    # calculo em si sempre usa preco_pix e preco_cartao separados
+    preco: float = 0.0
+
     parcelas: int = 1
     tipo: str = "online"
     observacoes: str = ""
+
+    # link do produto na loja de origem, quando a oferta veio de uma
+    # pesquisa automatica, vazio para ofertas cadastradas a mao
+    url_produto: str = ""
 
     # site parceiro, tipo livelo ou esfera
     pontos_por_real: float = 0.0

@@ -53,7 +53,7 @@ def criar_oferta(produto_id: int, payload: OfertaCreate):
     oferta = oferta_do_payload(payload, config)
     resultado = calcular_oferta(oferta, float(config["cdi_mensal"]))
 
-    db.adicionar_oferta(
+    oferta_id = db.adicionar_oferta(
         produto_id=produto_id,
         loja=oferta.loja,
         tipo=oferta.tipo,
@@ -71,14 +71,19 @@ def criar_oferta(produto_id: int, payload: OfertaCreate):
         validade=payload.validade,
         confianca=payload.confianca,
         preco_efetivo=resultado.preco_efetivo,
+        preco=oferta.preco,
+        url_produto=oferta.url_produto,
     )
     db.registrar_historico(
         produto_id, oferta.loja, oferta.preco_cartao, resultado.preco_efetivo,
         preco=oferta.preco, preco_pix=oferta.preco_pix,
         preco_cartao=oferta.preco_cartao, parcelas=oferta.parcelas,
+        oferta_id=oferta_id,
     )
 
-    nova = max(db.listar_ofertas_por_produto(produto_id), key=lambda item: item["id"])
+    nova = next(
+        item for item in db.listar_ofertas_por_produto(produto_id) if item["id"] == oferta_id
+    )
     return linha_oferta_para_saida(nova, config)
 
 
@@ -113,7 +118,7 @@ def atualizar_oferta(produto_id: int, oferta_id: int, payload: OfertaUpdate):
         validade=payload.validade,
         confianca=payload.confianca,
         preco_efetivo=resultado.preco_efetivo,
-        preco=oferta.preco_pix,
+        preco=oferta.preco,
     )
     if not atualizada:
         raise HTTPException(status_code=404, detail="Oferta não encontrada.")
@@ -158,7 +163,7 @@ def pesquisar_automaticamente(produto_id: int):
     for item in resultados_automaticos:
         oferta = item.oferta
         resultado = item.resultado
-        db.registrar_oferta_pesquisa(
+        oferta_id = db.registrar_oferta_pesquisa(
             produto_id=produto_id,
             loja=oferta.loja,
             tipo=oferta.tipo,
@@ -183,6 +188,7 @@ def pesquisar_automaticamente(produto_id: int):
             produto_id, oferta.loja, oferta.preco_cartao, resultado.preco_efetivo,
             preco=oferta.preco, preco_pix=oferta.preco_pix,
             preco_cartao=oferta.preco_cartao, parcelas=oferta.parcelas,
+            oferta_id=oferta_id,
         )
         saida.append({
             "loja": oferta.loja,

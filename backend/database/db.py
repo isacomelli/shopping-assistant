@@ -11,14 +11,15 @@ primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE
 dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja
 existe.
 
-sobre a tabela livelo_parceiros, ela nao e mais alimentada por um
-scraper automatico. o site da livelo bloqueia qualquer acesso
-automatizado a nivel de dominio, atraves do akamai, entao a tabela
-agora e mantida por cadastro manual, feito uma vez por parceiro em
-app.py e reaproveitado pela pesquisa automatica em services/pesquisa_produto.py.
+sobre a tabela livelo_parceiros, o cadastro e manual, feito uma vez
+por parceiro, com o nome exatamente como ele costuma aparecer nos
+resultados do buscape, mais um alias opcional para apelidos do mesmo
+grupo, tipo "magalu" para "magazine luiza". a pesquisa automatica em
+services/pesquisa_produto.py usa buscar_parceiro_livelo_por_nome para
+casar cada loja encontrada com esse cadastro, comparando por
+substring nos dois sentidos contra o nome e o alias.
 """
 
-import re
 import sqlite3
 import unicodedata
 from contextlib import contextmanager
@@ -51,7 +52,6 @@ def _adicionar_coluna_se_nao_existir(conn, tabela, definicao_coluna):
     anterior. e assim que o sqlite migra esquema em bancos que ja
     estao em uso.
     """
-    nome_coluna = definicao_coluna.split()[0]
     try:
         conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {definicao_coluna}")
     except sqlite3.OperationalError as erro:
@@ -74,6 +74,33 @@ def _migrar_colunas_novas(conn):
     )
     _adicionar_coluna_se_nao_existir(
         conn, "ofertas", "valor_milheiro REAL NOT NULL DEFAULT 0",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "preco REAL NOT NULL DEFAULT 0",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "url_produto TEXT",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "atualizada_em TEXT",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "historico_precos", "preco REAL",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "historico_precos", "preco_pix REAL",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "historico_precos", "preco_cartao REAL",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "historico_precos", "parcelas INTEGER",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "historico_precos", "oferta_id INTEGER",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "livelo_parceiros", "alias TEXT NOT NULL DEFAULT ''",
     )
 
 
@@ -142,15 +169,13 @@ def inicializar_banco():
             );
 
             CREATE TABLE IF NOT EXISTS livelo_parceiros (
-                codigo TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
                 nome TEXT NOT NULL,
-                url TEXT NOT NULL,
-                pontos_padrao REAL,
-                moeda_padrao TEXT,
-                pontos_clube REAL,
-                em_promocao INTEGER,
-                pontos_anteriores REAL,
-                atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP
+                alias TEXT NOT NULL DEFAULT '',
+                pontos_padrao REAL NOT NULL DEFAULT 0,
+                atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, nome)
             );
             """
         )
@@ -239,12 +264,41 @@ def adicionar_produto(nome, categoria, orcamento, preco_alvo, status="esperar"):
         return cursor.lastrowid
 
 
+def atualizar_produto(produto_id, nome, categoria, orcamento, preco_alvo):
+    with conexao() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE produtos SET nome = ?, categoria = ?, orcamento = ?, preco_alvo = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (nome, categoria, orcamento, preco_alvo, produto_id, USER_ID_PADRAO),
+        )
+        return cursor.rowcount > 0
+
+
 def atualizar_status_produto(produto_id, status):
     with conexao() as conn:
         conn.execute(
             "UPDATE produtos SET status = ? WHERE id = ? AND user_id = ?",
             (status, produto_id, USER_ID_PADRAO),
         )
+
+
+def excluir_produto(produto_id):
+    """
+    remove o produto e tudo que depende dele, as ofertas cadastradas
+    e o historico de precos, para nao deixar linha orfa no banco.
+    """
+    with conexao() as conn:
+        produto = conn.execute(
+            "SELECT id FROM produtos WHERE id = ? AND user_id = ?", (produto_id, USER_ID_PADRAO),
+        ).fetchone()
+        if not produto:
+            return False
+        conn.execute("DELETE FROM historico_precos WHERE produto_id = ?", (produto_id,))
+        conn.execute("DELETE FROM ofertas WHERE produto_id = ?", (produto_id,))
+        conn.execute("DELETE FROM produtos WHERE id = ? AND user_id = ?", (produto_id, USER_ID_PADRAO))
+        return True
 
 
 # ofertas
@@ -257,40 +311,117 @@ def listar_ofertas_por_produto(produto_id):
         return [dict(linha) for linha in linhas]
 
 
+def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+                     pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                     valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
+                     confianca, preco_efetivo, preco, url_produto):
+    cursor = conn.execute(
+        """
+        INSERT INTO ofertas (
+            produto_id, user_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+            pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+            valor_milheiro, cashback_pct, frete, cupom,
+            observacoes, validade, confianca, preco_efetivo, preco, url_produto
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            produto_id, USER_ID_PADRAO, loja, tipo, preco_pix, preco_cartao, parcelas,
+            pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+            valor_milheiro, cashback_pct, frete, cupom,
+            observacoes, validade, confianca, preco_efetivo, preco, url_produto,
+        ),
+    )
+    return cursor.lastrowid
+
+
 def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
                       pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
                       valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-                      confianca, preco_efetivo):
+                      confianca, preco_efetivo, preco=0.0, url_produto=""):
+    """
+    cadastra uma oferta a mao, tipicamente vinda do formulario manual
+    da calculadora. devolve o id da linha criada, para o chamador
+    poder linkar essa oferta a um registro de historico.
+    """
     with conexao() as conn:
-        conn.execute(
+        return _inserir_oferta(
+            conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+            pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+            valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
+            confianca, preco_efetivo, preco, url_produto,
+        )
+
+
+def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco,
+                               parcelas, pontos_por_real, pontos_por_dolar_cartao,
+                               percentual_bonus_transferencia, valor_milheiro, cashback_pct,
+                               frete, cupom, observacoes, validade, confianca, preco_efetivo,
+                               url_produto):
+    """
+    cadastra uma oferta encontrada pela pesquisa automatica no
+    buscape, mesma tabela da oferta manual, so que sempre com
+    preco e url_produto preenchidos. devolve o id da linha criada.
+    """
+    with conexao() as conn:
+        return _inserir_oferta(
+            conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+            pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+            valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
+            confianca, preco_efetivo, preco, url_produto,
+        )
+
+
+def atualizar_oferta(oferta_id, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
+                      pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
+                      valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
+                      confianca, preco_efetivo, preco=0.0):
+    with conexao() as conn:
+        cursor = conn.execute(
             """
-            INSERT INTO ofertas (
-                produto_id, user_id, loja, tipo, preco_pix, preco_cartao, parcelas,
-                pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
-                valor_milheiro, cashback_pct, frete, cupom,
-                observacoes, validade, confianca, preco_efetivo
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            UPDATE ofertas
+            SET loja = ?, tipo = ?, preco_pix = ?, preco_cartao = ?, parcelas = ?,
+                pontos_por_real = ?, pontos_por_dolar_cartao = ?,
+                percentual_bonus_transferencia = ?, valor_milheiro = ?,
+                cashback_pct = ?, frete = ?, cupom = ?, observacoes = ?,
+                validade = ?, confianca = ?, preco_efetivo = ?, preco = ?,
+                atualizada_em = CURRENT_TIMESTAMP
+            WHERE id = ? AND produto_id = ?
             """,
             (
-                produto_id, USER_ID_PADRAO, loja, tipo, preco_pix, preco_cartao, parcelas,
-                pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
-                valor_milheiro, cashback_pct, frete, cupom,
-                observacoes, validade, confianca, preco_efetivo,
+                loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real,
+                pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro,
+                cashback_pct, frete, cupom, observacoes, validade, confianca,
+                preco_efetivo, preco, oferta_id, produto_id,
             ),
         )
+        return cursor.rowcount > 0
+
+
+def excluir_oferta(oferta_id, produto_id):
+    with conexao() as conn:
+        cursor = conn.execute(
+            "DELETE FROM ofertas WHERE id = ? AND produto_id = ?", (oferta_id, produto_id),
+        )
+        return cursor.rowcount > 0
 
 
 # historico de precos
 
-def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo):
+def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo,
+                         preco=None, preco_pix=None, preco_cartao=None,
+                         parcelas=None, oferta_id=None):
     with conexao() as conn:
-        conn.execute(
+        cursor = conn.execute(
             """
-            INSERT INTO historico_precos (produto_id, loja, preco_anunciado, preco_efetivo)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO historico_precos (
+                produto_id, loja, preco_anunciado, preco_efetivo,
+                preco, preco_pix, preco_cartao, parcelas, oferta_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (produto_id, loja, preco_anunciado, preco_efetivo),
+            (produto_id, loja, preco_anunciado, preco_efetivo,
+             preco, preco_pix, preco_cartao, parcelas, oferta_id),
         )
+        return cursor.lastrowid
 
 
 def listar_historico(produto_id):
@@ -302,91 +433,147 @@ def listar_historico(produto_id):
         return [dict(linha) for linha in linhas]
 
 
-# parceiros livelo, cadastro manual
-#
-# a tabela nao e mais alimentada por scraper, ver o comentario no topo
-# deste arquivo. o codigo de cada parceiro manual e gerado a partir do
-# nome, para o cadastro poder ser atualizado depois pelo mesmo nome.
-
-def _slug_parceiro_manual(nome):
-    forma_normalizada = unicodedata.normalize("NFKD", nome)
-    sem_acento = "".join(c for c in forma_normalizada if not unicodedata.combining(c))
-    sem_acento = re.sub(r"[^a-zA-Z0-9\s]", "", sem_acento).strip().upper()
-    return "MANUAL-" + re.sub(r"\s+", "-", sem_acento)
-
-
-def adicionar_parceiro_livelo_manual(nome, pontos_padrao, moeda_padrao="R$"):
-    """
-    cadastra ou atualiza, pelo nome, um parceiro livelo com a taxa de
-    pontos por real ou por dolar informada a mao. e o unico jeito
-    confiavel de manter esta tabela hoje, ja que o site da livelo
-    bloqueia qualquer scraping automatizado.
-    """
-    codigo = _slug_parceiro_manual(nome)
+def excluir_historico(registro_id, produto_id):
     with conexao() as conn:
-        conn.execute(
-            """
-            INSERT INTO livelo_parceiros (
-                codigo, nome, url, pontos_padrao, moeda_padrao,
-                pontos_clube, em_promocao, pontos_anteriores, atualizado_em
-            ) VALUES (?, ?, '', ?, ?, 0, 0, 0, CURRENT_TIMESTAMP)
-            ON CONFLICT(codigo) DO UPDATE SET
-                nome = excluded.nome,
-                pontos_padrao = excluded.pontos_padrao,
-                moeda_padrao = excluded.moeda_padrao,
-                atualizado_em = CURRENT_TIMESTAMP
-            """,
-            (codigo, nome.strip(), pontos_padrao, moeda_padrao),
+        cursor = conn.execute(
+            "DELETE FROM historico_precos WHERE id = ? AND produto_id = ?",
+            (registro_id, produto_id),
         )
-        return codigo
+        return cursor.rowcount > 0
 
 
-def remover_parceiro_livelo(codigo):
-    with conexao() as conn:
-        conn.execute("DELETE FROM livelo_parceiros WHERE codigo = ?", (codigo,))
-
-
-def salvar_parceiros_livelo(parceiros):
+def encontrar_oferta_do_historico(registro_id, produto_id):
     """
-    mantido para compatibilidade, caso algum script antigo ainda
-    chame esta funcao passando objetos ParceiroLivelo completos.
+    devolve a oferta ligada a um registro de historico, para o front
+    poder abrir direto a edicao daquela oferta na calculadora.
+
+    quando o registro tem oferta_id preenchido, o vinculo e direto.
+    registros mais antigos, criados antes dessa coluna existir, caem
+    de volta para um casamento por loja, escolhendo entre as ofertas
+    daquela loja a que tiver o preco efetivo mais proximo do que foi
+    salvo no historico.
     """
     with conexao() as conn:
-        for parceiro in parceiros:
-            conn.execute(
-                """
-                INSERT INTO livelo_parceiros (
-                    codigo, nome, url, pontos_padrao, moeda_padrao,
-                    pontos_clube, em_promocao, pontos_anteriores, atualizado_em
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(codigo) DO UPDATE SET
-                    nome = excluded.nome,
-                    url = excluded.url,
-                    pontos_padrao = excluded.pontos_padrao,
-                    moeda_padrao = excluded.moeda_padrao,
-                    pontos_clube = excluded.pontos_clube,
-                    em_promocao = excluded.em_promocao,
-                    pontos_anteriores = excluded.pontos_anteriores,
-                    atualizado_em = CURRENT_TIMESTAMP
-                """,
-                (
-                    parceiro.codigo, parceiro.nome, parceiro.url, parceiro.pontos_padrao,
-                    parceiro.moeda_padrao, parceiro.pontos_clube, int(parceiro.em_promocao),
-                    parceiro.pontos_anteriores,
-                ),
+        historico = conn.execute(
+            "SELECT * FROM historico_precos WHERE id = ? AND produto_id = ?",
+            (registro_id, produto_id),
+        ).fetchone()
+        if not historico:
+            return None
+        historico = dict(historico)
+
+        if historico.get("oferta_id"):
+            linha = conn.execute(
+                "SELECT * FROM ofertas WHERE id = ? AND produto_id = ?",
+                (historico["oferta_id"], produto_id),
+            ).fetchone()
+            if linha:
+                return dict(linha)
+
+        candidatas = conn.execute(
+            "SELECT * FROM ofertas WHERE produto_id = ? AND loja = ? ORDER BY criado_em DESC",
+            (produto_id, historico["loja"]),
+        ).fetchall()
+        candidatas = [dict(linha) for linha in candidatas]
+        if not candidatas:
+            return None
+
+        preco_efetivo_historico = historico.get("preco_efetivo")
+        if preco_efetivo_historico is not None:
+            candidatas.sort(
+                key=lambda linha: abs((linha["preco_efetivo"] or 0) - preco_efetivo_historico)
             )
+        return candidatas[0]
+
+
+# parceiros livelo ou esfera, cadastro manual
+#
+# cadastrado uma vez por parceiro, com o nome exatamente como ele
+# aparece nos resultados do buscape. o alias e opcional, util para
+# apelidos do mesmo grupo que a pesquisa automatica tambem deve
+# reconhecer, tipo "magalu" para "magazine luiza".
+
+def _normalizar_nome(nome):
+    forma_normalizada = unicodedata.normalize("NFKD", nome or "")
+    sem_acento = "".join(c for c in forma_normalizada if not unicodedata.combining(c))
+    return " ".join(sem_acento.strip().lower().split())
 
 
 def listar_parceiros_livelo():
     with conexao() as conn:
-        linhas = conn.execute("SELECT * FROM livelo_parceiros ORDER BY nome").fetchall()
+        linhas = conn.execute(
+            "SELECT * FROM livelo_parceiros WHERE user_id = ? ORDER BY nome", (USER_ID_PADRAO,)
+        ).fetchall()
         return [dict(linha) for linha in linhas]
+
+
+def adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias=""):
+    """
+    cadastra ou atualiza, pelo nome, um parceiro Livelo ou Esfera com
+    a taxa de pontos por real informada a mao.
+    """
+    with conexao() as conn:
+        conn.execute(
+            """
+            INSERT INTO livelo_parceiros (user_id, nome, alias, pontos_padrao, atualizado_em)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, nome) DO UPDATE SET
+                alias = excluded.alias,
+                pontos_padrao = excluded.pontos_padrao,
+                atualizado_em = CURRENT_TIMESTAMP
+            """,
+            (USER_ID_PADRAO, nome.strip(), alias.strip(), pontos_padrao),
+        )
+
+
+def salvar_parceiros_livelo(parceiros):
+    """
+    cadastra ou atualiza varios parceiros de uma vez, aceitando tanto
+    dicts quanto objetos com atributos nome, alias e pontos_padrao.
+    """
+    for parceiro in parceiros:
+        if isinstance(parceiro, dict):
+            nome = parceiro["nome"]
+            alias = parceiro.get("alias", "")
+            pontos_padrao = parceiro["pontos_padrao"]
+        else:
+            nome = parceiro.nome
+            alias = getattr(parceiro, "alias", "")
+            pontos_padrao = parceiro.pontos_padrao
+        adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias)
+
+
+def remover_parceiro_livelo(parceiro_id):
+    with conexao() as conn:
+        conn.execute(
+            "DELETE FROM livelo_parceiros WHERE id = ? AND user_id = ?",
+            (parceiro_id, USER_ID_PADRAO),
+        )
 
 
 def buscar_parceiro_livelo_por_nome(termo):
-    with conexao() as conn:
-        linhas = conn.execute(
-            "SELECT * FROM livelo_parceiros WHERE nome LIKE ? ORDER BY nome",
-            (f"%{termo}%",),
-        ).fetchall()
-        return [dict(linha) for linha in linhas]
+    """
+    procura, entre os parceiros cadastrados, aquele cujo nome ou
+    alias mais se aproxima do termo informado, tipicamente o nome de
+    uma loja encontrado na pesquisa automatica do buscape.
+
+    a comparacao e por substring nos dois sentidos, contra o nome e
+    contra o alias, o suficiente para nomes como "fast shop" e "fast
+    shop oficial", ou para um apelido cadastrado, tipo "magalu" para
+    "magazine luiza". devolve o primeiro parceiro que bater, ou none
+    quando nenhum casar.
+    """
+    alvo = _normalizar_nome(termo)
+    if not alvo:
+        return None
+
+    for parceiro in listar_parceiros_livelo():
+        nome_normalizado = _normalizar_nome(parceiro["nome"])
+        alias_normalizado = _normalizar_nome(parceiro.get("alias"))
+
+        if nome_normalizado and (nome_normalizado in alvo or alvo in nome_normalizado):
+            return parceiro
+        if alias_normalizado and (alias_normalizado in alvo or alvo in alias_normalizado):
+            return parceiro
+
+    return None

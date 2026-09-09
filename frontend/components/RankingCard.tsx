@@ -14,15 +14,17 @@ export function RankingCard({
   cartoes,
   aoSalvarEdicao,
   aoExcluir,
+  abrirEditando = false,
 }: {
   oferta: Oferta;
   posicao: number;
   cartoes: Cartao[];
   aoSalvarEdicao: (payload: OfertaPayload) => Promise<void>;
   aoExcluir: () => Promise<void>;
+  abrirEditando?: boolean;
 }) {
-  const [aberto, setAberto] = useState(false);
-  const [editando, setEditando] = useState(false);
+  const [aberto, setAberto] = useState(abrirEditando);
+  const [editando, setEditando] = useState(abrirEditando);
 
   const rotulo = MEDALHAS[posicao] ?? `${posicao + 1}º lugar`;
 

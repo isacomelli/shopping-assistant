@@ -259,17 +259,17 @@ export function OfertaForm({
         </div>
       </div>
 
-      {erro && <p className="text-sm text-alert-500">{erro}</p>}
+      {erro && <p className="text-sm text-red-600">{erro}</p>}
 
-      <div className="flex items-center gap-3">
-        <button className="btn-primary" onClick={enviar} disabled={salvando}>
-          {salvando ? "Salvando." : rotuloBotao}
-        </button>
+      <div className="flex items-center justify-end gap-3 border-t border-ink-300/20 pt-4">
         {aoCancelar && (
-          <button className="btn-secondary" onClick={aoCancelar}>
+          <button type="button" className="btn-secondary" onClick={aoCancelar}>
             Cancelar
           </button>
         )}
+        <button type="button" className="btn-primary" onClick={enviar} disabled={salvando}>
+          {salvando ? "Salvando..." : rotuloBotao}
+        </button>
       </div>
     </div>
   );

@@ -1,73 +1,70 @@
 # Assistente de Compras da Reforma
 
-Aplicação pessoal e local para calcular o custo real de uma compra, considerando preço no pix, preço parcelado no cartão, pontos Livelo ou Esfera, cashback e o rendimento de deixar o dinheiro investido no CDI.
+Aplicação pessoal para calcular o custo real de uma compra, considerando preço no Pix, preço parcelado no cartão, pontos Livelo ou Esfera, cashback e o rendimento de deixar o dinheiro investido no CDI.
 
-## Como rodar
+Esta branch contém a versão migrada para uma arquitetura de API mais frontend separado. A versão original em Streamlit continua disponível na branch `streamlit_version`.
 
-```bash
-cd shopping-assistant
-python -m venv .venv
-```
-
-No Windows, PowerShell:
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-.venv\Scripts\Activate.ps1
-```
-
-No Windows, cmd:
-
-```cmd
-.venv\Scripts\activate.bat
-```
-
-No Linux ou macOS:
-
-```bash
-source .venv/bin/activate
-```
-
-Depois, em qualquer sistema:
-
-```bash
-pip install -r requirements.txt
-playwright install chromium
-streamlit run app.py
-```
-
-O app abre em `http://localhost:8501`. Se o computador e o celular estiverem na mesma rede Wi-Fi, também dá para abrir pelo IP local do computador.
-
-## Como rodar os testes
-
-O motor de cálculo, que é a parte mais importante do projeto, tem testes isolados que não dependem de banco, scraper ou interface.
-
-```bash
-pytest tests/ -v
-```
-
-## Estrutura do projeto
+## Arquitetura
 
 ```
 shopping-assistant/
-├── app.py                    tela inicial, perfil financeiro e cartões
-├── pages/
-│   ├── 1_Calculadora.py      cadastro de ofertas e ranking de preço efetivo
-│   ├── 2_Wishlist.py         lista de compras da reforma
-│   ├── 3_Parceiros_Livelo.py lista de parceiros Livelo, atualizada sob demanda
-│   └── 4_Historico.py        evolução do preço efetivo ao longo do tempo
-├── engine/
-│   └── price_engine.py       cálculo puro, testado isoladamente
-├── database/
-│   └── db.py                 acesso ao SQLite, com migração de esquema
-├── scrapers/
-│   └── livelo.py             leitura da página pública de parceiros
-├── services/
-│   └── cambio.py             cotação do dólar via API pública
-├── utils/
-│   └── ui.py                 tabela e gráfico em HTML/SVG, sem depender de pandas
-└── tests/
-    └── test_price_engine.py
+├── backend/          api em FastAPI, motor de calculo, banco e scrapers
+│   ├── database/     acesso ao sqlite, com migracao de esquema
+│   ├── engine/       motor de calculo puro, testado isoladamente
+│   ├── services/     cotacao do dolar e orquestrador da pesquisa automatica
+│   ├── scrapers/     buscape, livelo e meliuz
+│   ├── routers/      rotas da api, perfil, produtos, ofertas, historico
+│   ├── schemas.py    modelos pydantic de entrada e saida
+│   ├── calculo.py    ponte entre as linhas do banco e o motor de calculo
+│   ├── main.py        ponto de entrada da api
+│   └── tests/
+└── frontend/         next.js 14, typescript e tailwind
+    ├── app/          perfil, calculadora, wishlist, historico
+    ├── components/
+    └── lib/          cliente da api e tipos compartilhados
+```
+
+O motor de cálculo (`engine/price_engine.py`), o acesso ao banco (`database/db.py`), os serviços e os scrapers são exatamente os mesmos módulos da versão em Streamlit, só passaram a ser chamados por rotas HTTP em vez de por telas do Streamlit.
+
+## Como rodar com Docker
+
+```bash
+docker compose up --build
+```
+
+A API sobe em `http://localhost:8000` (documentação interativa em `/docs`) e o site em `http://localhost:3000`.
+
+## Como rodar sem Docker
+
+Backend:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate   # no Windows, .venv\Scripts\activate
+pip install -r requirements.txt
+playwright install chromium
+uvicorn main:app --reload --port 8000
+```
+
+Frontend, em outro terminal:
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
+
+O site abre em `http://localhost:3000` e consulta a API em `http://localhost:8000`.
+
+## Como rodar os testes do backend
+
+O motor de cálculo e o orquestrador de pesquisa automática têm testes isolados que não dependem de rede nem de navegador.
+
+```bash
+cd backend
+pytest tests/ -v
 ```
 
 ## Sobre o cálculo de milhas
@@ -82,32 +79,18 @@ milhas totais = milhas do site parceiro com bônus + pontos do cartão
 valor em milhas = (valor do milheiro * milhas totais) / 1000
 ```
 
-Um detalhe importante, no Pix não existe cartão envolvido, então só o site parceiro pontua. No cartão parcelado, os dois acúmulos contam ao mesmo tempo. Por padrão, o valor do milheiro é R$ 15 e os pontos por dólar no cartão são 3, ambos ajustáveis no perfil ou por oferta.
+No Pix não existe cartão envolvido, então só o site parceiro pontua. No cartão parcelado, os dois acúmulos contam ao mesmo tempo. Por padrão, o valor do milheiro é R$ 15 e os pontos por dólar no cartão são 3, ambos ajustáveis no perfil ou por oferta. Quando uma oferta não tiver o valor do milheiro preenchido, o cálculo cai de volta para um valor fixo por ponto.
 
-Quando uma oferta não tiver o valor do milheiro preenchido, o cálculo cai de volta para um valor fixo por ponto, útil para programas mais simples que não convertem para milhas.
+## Sobre a pesquisa automática
 
-## Sobre a tela sem pandas
+A pesquisa automática consulta o Buscapé para descobrir o preço e a lista de lojas que vendem o produto (`scrapers/buscape.py`). Para cada loja encontrada, o sistema verifica se ela é parceira Livelo ou Esfera a partir de um cache carregado em `database/db.py`; quando não há parceria, a loja continua aparecendo no ranking, só sem pontuação.
 
-Em alguns computadores Windows com política de controle de aplicativo, o pandas não consegue nem ser importado, porque uma DLL interna dele é bloqueada. Como `st.dataframe` e `st.line_chart` importam pandas por baixo dos panos, essas telas quebram nessas máquinas, mesmo sem nenhum motivo relacionado ao código deste projeto.
+O scraper da Livelo por loja (`scrapers/livelo.py`) consulta `https://www.livelo.com.br/busca?query=NOME_DA_LOJA`. Se o layout do site mudar ou o acesso automatizado for bloqueado, o scraper salva o HTML da página em `backend/scrapers/debug_livelo.html` para ajudar a diagnosticar o problema.
 
-Por isso, todas as tabelas e gráficos do app usam `utils/ui.py`, que desenha tudo em HTML e SVG puro, sem nunca importar pandas.
+## Limitações atuais
 
-## Sobre o scraper da Livelo
-
-O scraper lê apenas a página pública `https://www.livelo.com.br/juntar-pontos/todos-os-parceiros`, que lista os parceiros do Compre e Pontue e a taxa de pontos de cada um. Não faz login, não acessa nenhuma conta, e não coleta nenhum dado pessoal.
-
-A lista de parceiros carrega aos poucos conforme a página é rolada, então o scraper simula a rolagem até o final antes de coletar os links. Se isso mudar no site, ou se o site bloquear o acesso automatizado, o scraper salva o HTML da página em `scrapers/debug_livelo.html` para ajudar a entender o que aconteceu.
-
-Dois pontos de atenção:
-
-Primeiro, o layout do site pode mudar a qualquer momento, já que não existe uma API oficial. Se o botão de atualizar parar de trazer resultados, o primeiro lugar para olhar é o `debug_livelo.html` salvo, e depois as expressões regulares em `scrapers/livelo.py`.
-
-Segundo, é melhor não rodar o scraper com muita frequência. O app já foi pensado para atualizar sob demanda, quando você clica no botão, e guarda o resultado no banco até a próxima atualização manual.
-
-## Limitações do MVP atual
-
-Livelo tem o scraper pronto. Esfera e Méliuz ainda não, o plano é seguir o mesmo padrão do scraper da Livelo para os dois. A busca automática de preços via BuscaPé ou Google Shopping também ainda não existe, hoje as ofertas são cadastradas manualmente na calculadora, incluindo as de loja física e negociação presencial.
+O scraper de Méliuz existe mas ainda não está ligado à pesquisa automática. O scraper de Esfera ainda não existe, o plano é seguir o mesmo padrão do scraper da Livelo. A confiabilidade do scraper da Livelo por loja também é um ponto de atenção, já que não existe API pública e o Akamai bloqueia o endpoint antigo que listava todos os parceiros de uma vez.
 
 ## Próximos passos sugeridos
 
-Primeiro, scraper de Esfera e Méliuz, seguindo o mesmo padrão do de Livelo. Depois, busca automática de preços por produto via BuscaPé ou Google Shopping. Por fim, o recurso de bater preço entre uma oferta online e uma oportunidade de loja física, comparando lado a lado para apoiar a negociação.
+Scraper de Esfera e integração do Méliuz na pesquisa automática, seguindo o mesmo padrão do scraper da Livelo. Migração do SQLite para Postgres, já dockerizável junto com a API. Por fim, o recurso de bater preço entre uma oferta online e uma oportunidade de loja física, comparando lado a lado para apoiar a negociação.
