@@ -1,6 +1,6 @@
 """
-rotas do perfil financeiro, cdi, cotacao do dolar, valor do milheiro
-padrao e os cartoes de credito cadastrados.
+rotas do perfil financeiro, rendimento mensal liquido, cotacao do
+dolar, valor do milheiro padrao e os cartoes de credito cadastrados.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -21,8 +21,7 @@ def obter_perfil():
 @router.put("", response_model=PerfilOut)
 def salvar_perfil(payload: PerfilUpdate):
     db.salvar_configuracoes(
-        payload.cdi_mensal, payload.cotacao_dolar,
-        payload.valor_milheiro_padrao, payload.pontos_dolar_cartao_padrao,
+        payload.rendimento_mensal, payload.cotacao_dolar, payload.valor_milheiro_padrao,
     )
     return db.obter_configuracoes()
 

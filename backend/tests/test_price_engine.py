@@ -74,7 +74,7 @@ def test_bonus_de_transferencia_aumenta_o_valor_das_milhas():
 
 def test_calcular_oferta_pix_mais_barato_quando_nao_ha_pontos():
     oferta = Oferta(loja="loja teste", preco_pix=900, preco_cartao=1000, parcelas=1)
-    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
+    resultado = calcular_oferta(oferta, rendimento_mensal_pct=1.1)
     assert resultado.melhor_forma_pagamento == "pix"
     assert resultado.preco_efetivo == 900
 
@@ -91,7 +91,7 @@ def test_calcular_oferta_usa_milheiro_quando_valor_milheiro_preenchido():
         percentual_bonus_transferencia=80,
         valor_milheiro=15,
     )
-    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
+    resultado = calcular_oferta(oferta, rendimento_mensal_pct=1.1)
 
     valor_esperado_pix = calcular_valor_milhas_pix(1571.00, 10, 80, 15)
     valor_esperado_cartao = calcular_valor_milhas_cartao(1651.37, 10, 5.3, 3, 80, 15)
@@ -108,7 +108,7 @@ def test_calcular_oferta_cai_para_valor_ponto_fixo_sem_milheiro():
         pontos_por_real=10,
         valor_ponto=0.025,
     )
-    resultado = calcular_oferta(oferta, cdi_mensal_pct=1.1)
+    resultado = calcular_oferta(oferta, rendimento_mensal_pct=1.1)
     assert resultado.valor_pontos_pix == 1000 * 10 * 0.025
 
 
@@ -131,14 +131,14 @@ def test_ranquear_ofertas_ordena_da_mais_barata_para_a_mais_cara():
         Oferta(loja="barata", preco_pix=900, preco_cartao=950, parcelas=1),
         Oferta(loja="media", preco_pix=1000, preco_cartao=1000, parcelas=1),
     ]
-    ranking = ranquear_ofertas(ofertas, cdi_mensal_pct=1.1)
+    ranking = ranquear_ofertas(ofertas, rendimento_mensal_pct=1.1)
 
     nomes_em_ordem = [resultado.loja for resultado in ranking]
     assert nomes_em_ordem == ["barata", "media", "cara"]
 
 
 def test_simular_parcelamento_gera_uma_linha_por_quantidade_de_parcelas():
-    resultado = simular_parcelamento(preco_pix=740, preco_cartao=779, cdi_mensal_pct=1.1, max_parcelas=12)
+    resultado = simular_parcelamento(preco_pix=740, preco_cartao=779, rendimento_mensal_pct=1.1, max_parcelas=12)
     assert len(resultado) == 12
     assert resultado[0]["parcelas"] == 1
     assert resultado[-1]["parcelas"] == 12

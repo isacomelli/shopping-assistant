@@ -15,3 +15,19 @@ export function formatarData(texto: string | null | undefined): string {
   if (!ano || !mes || !dia) return texto;
   return `${dia}/${mes}/${ano}`;
 }
+
+export function obterDominioDaOferta(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const { hostname } = new URL(url);
+    return hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+export function obterLogoDaLoja(url: string | null | undefined): string | null {
+  const dominio = obterDominioDaOferta(url);
+  if (!dominio) return null;
+  return `https://www.google.com/s2/favicons?domain=${dominio}&sz=64`;
+}

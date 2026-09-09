@@ -59,7 +59,25 @@ def _adicionar_coluna_se_nao_existir(conn, tabela, definicao_coluna):
             raise
 
 
+def _renomear_coluna_se_necessario(conn, tabela, coluna_antiga, coluna_nova):
+    """
+    tenta renomear uma coluna existente, e ignora o erro quando a
+    coluna antiga ja nao existe mais, seja porque o banco e novo, seja
+    porque a renomeacao ja rodou numa execucao anterior. usado para
+    corrigir o nome da coluna de "cdi_mensal" para "rendimento_mensal",
+    ja que o valor nunca foi de fato o cdi, e sim o rendimento mensal
+    liquido informado pelo usuario.
+    """
+    try:
+        conn.execute(f"ALTER TABLE {tabela} RENAME COLUMN {coluna_antiga} TO {coluna_nova}")
+    except sqlite3.OperationalError as erro:
+        mensagem = str(erro).lower()
+        if "no such column" not in mensagem and "duplicate column name" not in mensagem:
+            raise
+
+
 def _migrar_colunas_novas(conn):
+    _renomear_coluna_se_necessario(conn, "user_settings", "cdi_mensal", "rendimento_mensal")
     _adicionar_coluna_se_nao_existir(
         conn, "user_settings", f"valor_milheiro_padrao REAL NOT NULL DEFAULT {VALOR_MILHEIRO_PADRAO}",
     )
@@ -111,7 +129,7 @@ def inicializar_banco():
             CREATE TABLE IF NOT EXISTS user_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL DEFAULT 1,
-                cdi_mensal REAL NOT NULL DEFAULT 1.1,
+                rendimento_mensal REAL NOT NULL DEFAULT 1.1,
                 cotacao_dolar REAL NOT NULL DEFAULT 5.4,
                 atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id)
@@ -198,16 +216,22 @@ def obter_configuracoes():
         return dict(linha)
 
 
-def salvar_configuracoes(cdi_mensal, cotacao_dolar, valor_milheiro_padrao, pontos_dolar_cartao_padrao):
+def salvar_configuracoes(rendimento_mensal, cotacao_dolar, valor_milheiro_padrao):
+    """
+    salva o perfil financeiro. o campo de pontos por dolar padrao do
+    cartao nao entra mais aqui, porque cada cartao cadastrado ja tem
+    sua propria taxa de pontos por dolar, um padrao global so
+    duplicava essa informacao sem servir pra nada.
+    """
     with conexao() as conn:
         conn.execute(
             """
             UPDATE user_settings
-            SET cdi_mensal = ?, cotacao_dolar = ?, valor_milheiro_padrao = ?,
-                pontos_dolar_cartao_padrao = ?, atualizado_em = CURRENT_TIMESTAMP
+            SET rendimento_mensal = ?, cotacao_dolar = ?, valor_milheiro_padrao = ?,
+                atualizado_em = CURRENT_TIMESTAMP
             WHERE user_id = ?
             """,
-            (cdi_mensal, cotacao_dolar, valor_milheiro_padrao, pontos_dolar_cartao_padrao, USER_ID_PADRAO),
+            (rendimento_mensal, cotacao_dolar, valor_milheiro_padrao, USER_ID_PADRAO),
         )
 
 
