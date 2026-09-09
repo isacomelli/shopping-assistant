@@ -95,7 +95,7 @@ def test_pesquisar_produto_automaticamente_ranqueia_do_mais_barato_para_o_mais_c
 
     resultados = pesquisar_produto_automaticamente(
         "geladeira teste",
-        cdi_mensal=1.1,
+        rendimento_mensal=1.1,
         cotacao_dolar=5.3,
         pontos_por_dolar_cartao_padrao=3.0,
         buscar_ofertas_buscape=buscador_falso,

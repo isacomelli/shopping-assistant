@@ -98,7 +98,7 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
     return oferta, parceiro, oferta_buscape.confianca_pix_cartao
 
 
-def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
+def pesquisar_produto_automaticamente(nome_produto, rendimento_mensal,
                                        cotacao_dolar, pontos_por_dolar_cartao_padrao,
                                        buscar_ofertas_buscape=None,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
@@ -125,7 +125,7 @@ def pesquisar_produto_automaticamente(nome_produto, cdi_mensal,
             oferta_buscape, cotacao_dolar, pontos_por_dolar_cartao_padrao,
             valor_milheiro, percentual_bonus_transferencia, parcelas,
         )
-        resultado = calcular_oferta(oferta, cdi_mensal)
+        resultado = calcular_oferta(oferta, rendimento_mensal)
         resultados.append(
             ResultadoAutomatico(
                 oferta=oferta,

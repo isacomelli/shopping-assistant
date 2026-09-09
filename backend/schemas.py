@@ -14,17 +14,15 @@ from pydantic import BaseModel, Field
 # perfil financeiro
 
 class PerfilOut(BaseModel):
-    cdi_mensal: float
+    rendimento_mensal: float
     cotacao_dolar: float
     valor_milheiro_padrao: float
-    pontos_dolar_cartao_padrao: float
 
 
 class PerfilUpdate(BaseModel):
-    cdi_mensal: float
+    rendimento_mensal: float
     cotacao_dolar: float
     valor_milheiro_padrao: float
-    pontos_dolar_cartao_padrao: float
 
 
 class CotacaoDolarOut(BaseModel):
@@ -158,7 +156,7 @@ class ResultadoAutomaticoOut(BaseModel):
 class SimulacaoParcelamentoIn(BaseModel):
     preco_pix: float
     preco_cartao: float
-    cdi_mensal: float
+    rendimento_mensal: float
     max_parcelas: int = Field(default=12, le=36)
 
 

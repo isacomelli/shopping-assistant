@@ -51,7 +51,7 @@ def criar_oferta(produto_id: int, payload: OfertaCreate):
         )
     config = db.obter_configuracoes()
     oferta = oferta_do_payload(payload, config)
-    resultado = calcular_oferta(oferta, float(config["cdi_mensal"]))
+    resultado = calcular_oferta(oferta, float(config["rendimento_mensal"]))
 
     oferta_id = db.adicionar_oferta(
         produto_id=produto_id,
@@ -97,7 +97,7 @@ def atualizar_oferta(produto_id: int, oferta_id: int, payload: OfertaUpdate):
         )
     config = db.obter_configuracoes()
     oferta = oferta_do_payload(payload, config)
-    resultado = calcular_oferta(oferta, float(config["cdi_mensal"]))
+    resultado = calcular_oferta(oferta, float(config["rendimento_mensal"]))
 
     atualizada = db.atualizar_oferta(
         oferta_id=oferta_id,
@@ -122,6 +122,13 @@ def atualizar_oferta(produto_id: int, oferta_id: int, payload: OfertaUpdate):
     )
     if not atualizada:
         raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+
+    db.registrar_historico(
+        produto_id, oferta.loja, oferta.preco_cartao, resultado.preco_efetivo,
+        preco=oferta.preco, preco_pix=oferta.preco_pix,
+        preco_cartao=oferta.preco_cartao, parcelas=oferta.parcelas,
+        oferta_id=oferta_id,
+    )
 
     linha = next(
         item for item in db.listar_ofertas_por_produto(produto_id) if item["id"] == oferta_id
@@ -149,7 +156,7 @@ def pesquisar_automaticamente(produto_id: int):
     try:
         resultados_automaticos = pesquisar_produto_automaticamente(
             nome_produto=produto["nome"],
-            cdi_mensal=float(config["cdi_mensal"]),
+            rendimento_mensal=float(config["rendimento_mensal"]),
             cotacao_dolar=float(config["cotacao_dolar"]),
             pontos_por_dolar_cartao_padrao=float(config["pontos_dolar_cartao_padrao"]),
             valor_milheiro=float(config["valor_milheiro_padrao"]),
@@ -211,7 +218,7 @@ def pesquisar_automaticamente(produto_id: int):
 @router.post("/simular-parcelamento", response_model=list[ParcelaSimuladaOut])
 def simular(payload: SimulacaoParcelamentoIn):
     return simular_parcelamento(
-        payload.preco_pix, payload.preco_cartao, payload.cdi_mensal, payload.max_parcelas,
+        payload.preco_pix, payload.preco_cartao, payload.rendimento_mensal, payload.max_parcelas,
     )
 
 

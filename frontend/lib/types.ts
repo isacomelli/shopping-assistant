@@ -1,8 +1,7 @@
 export interface Perfil {
-  cdi_mensal: number;
+  rendimento_mensal: number;
   cotacao_dolar: number;
   valor_milheiro_padrao: number;
-  pontos_dolar_cartao_padrao: number;
 }
 
 export interface Cartao {

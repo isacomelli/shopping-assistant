@@ -99,7 +99,7 @@ export const api = {
   simularParcelamento: (payload: {
     preco_pix: number;
     preco_cartao: number;
-    cdi_mensal: number;
+    rendimento_mensal: number;
     max_parcelas?: number;
   }) =>
     requisitar<ParcelaSimulada[]>("/simular-parcelamento", {

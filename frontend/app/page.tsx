@@ -86,16 +86,19 @@ export default function PaginaPerfil() {
         </p>
       </div>
 
-      <Card title="Perfil financeiro" subtitle="CDI, cotação do dólar e valor padrão do milheiro.">
-        <div className="grid grid-cols-2 gap-4">
+      <Card
+        title="Perfil financeiro"
+        subtitle="Rendimento mensal líquido, cotação do dólar e valor padrão do milheiro."
+      >
+        <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="field-label">CDI mensal (%)</label>
+            <label className="field-label">Rendimento mensal líquido (%)</label>
             <input
               type="number"
               step="0.01"
               className="field-input"
-              value={perfil.cdi_mensal}
-              onChange={(e) => setPerfil({ ...perfil, cdi_mensal: Number(e.target.value) })}
+              value={perfil.rendimento_mensal}
+              onChange={(e) => setPerfil({ ...perfil, rendimento_mensal: Number(e.target.value) })}
             />
           </div>
           <div>
@@ -117,18 +120,6 @@ export default function PaginaPerfil() {
               value={perfil.valor_milheiro_padrao}
               onChange={(e) =>
                 setPerfil({ ...perfil, valor_milheiro_padrao: Number(e.target.value) })
-              }
-            />
-          </div>
-          <div>
-            <label className="field-label">Pontos por dólar padrão no cartão</label>
-            <input
-              type="number"
-              step="0.5"
-              className="field-input"
-              value={perfil.pontos_dolar_cartao_padrao}
-              onChange={(e) =>
-                setPerfil({ ...perfil, pontos_dolar_cartao_padrao: Number(e.target.value) })
               }
             />
           </div>

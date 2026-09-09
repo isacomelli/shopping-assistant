@@ -96,10 +96,10 @@ class ResultadoOferta:
     economia_vs_anunciado: float
 
 
-def valor_presente_parcelas(preco_total, parcelas, cdi_mensal_pct):
+def valor_presente_parcelas(preco_total, parcelas, rendimento_mensal_pct):
     """
     calcula o valor presente de n parcelas iguais e sem juros,
-    descontadas pelo cdi mensal.
+    descontadas pelo rendimento mensal líquido informado no perfil.
 
     quanto maior o numero de parcelas, menor o valor presente, ou
     seja, maior o beneficio de parcelar em vez de pagar tudo agora.
@@ -107,7 +107,7 @@ def valor_presente_parcelas(preco_total, parcelas, cdi_mensal_pct):
     if parcelas <= 1:
         return preco_total
 
-    taxa = cdi_mensal_pct / 100
+    taxa = rendimento_mensal_pct / 100
     parcela = preco_total / parcelas
 
     valor_presente = 0.0
@@ -117,14 +117,14 @@ def valor_presente_parcelas(preco_total, parcelas, cdi_mensal_pct):
     return valor_presente
 
 
-def calcular_rendimento_parcelamento(preco_cartao, parcelas, cdi_mensal_pct):
+def calcular_rendimento_parcelamento(preco_cartao, parcelas, rendimento_mensal_pct):
     """
     quanto voce ganha, em reais, por poder parcelar em vez de pagar
     tudo a vista no cartao.
     """
     if parcelas <= 1:
         return 0.0
-    vp = valor_presente_parcelas(preco_cartao, parcelas, cdi_mensal_pct)
+    vp = valor_presente_parcelas(preco_cartao, parcelas, rendimento_mensal_pct)
     return preco_cartao - vp
 
 
@@ -231,7 +231,7 @@ def _calcular_valor_pontos_cartao(oferta):
     return calcular_valor_pontos_fixo(oferta.preco_cartao, oferta.pontos_por_real, oferta.valor_ponto)
 
 
-def calcular_oferta(oferta: Oferta, cdi_mensal_pct: float) -> ResultadoOferta:
+def calcular_oferta(oferta: Oferta, rendimento_mensal_pct: float) -> ResultadoOferta:
     """
     calcula o preco efetivo de uma oferta, tanto pagando pix quanto
     pagando parcelado no cartao, e devolve qual das duas formas de
@@ -246,7 +246,7 @@ def calcular_oferta(oferta: Oferta, cdi_mensal_pct: float) -> ResultadoOferta:
     )
 
     rendimento_parcelamento = calcular_rendimento_parcelamento(
-        oferta.preco_cartao, oferta.parcelas, cdi_mensal_pct,
+        oferta.preco_cartao, oferta.parcelas, rendimento_mensal_pct,
     )
     valor_pontos_cartao = _calcular_valor_pontos_cartao(oferta)
     cashback_valor_cartao = calcular_valor_cashback(oferta.preco_cartao, oferta.cashback_pct)
@@ -285,23 +285,23 @@ def calcular_oferta(oferta: Oferta, cdi_mensal_pct: float) -> ResultadoOferta:
     )
 
 
-def ranquear_ofertas(ofertas, cdi_mensal_pct):
+def ranquear_ofertas(ofertas, rendimento_mensal_pct):
     """
     calcula todas as ofertas e devolve a lista ordenada da mais barata
     para a mais cara, considerando o preco efetivo.
     """
-    resultados = [calcular_oferta(oferta, cdi_mensal_pct) for oferta in ofertas]
+    resultados = [calcular_oferta(oferta, rendimento_mensal_pct) for oferta in ofertas]
     return sorted(resultados, key=lambda r: r.preco_efetivo)
 
 
-def simular_parcelamento(preco_pix, preco_cartao, cdi_mensal_pct, max_parcelas=12):
+def simular_parcelamento(preco_pix, preco_cartao, rendimento_mensal_pct, max_parcelas=12):
     """
     simula o custo efetivo do cartao para 1 ate max_parcelas parcelas,
     util para responder a partir de quantas vezes compensa parcelar.
     """
     resultados = []
     for parcelas in range(1, max_parcelas + 1):
-        rendimento = calcular_rendimento_parcelamento(preco_cartao, parcelas, cdi_mensal_pct)
+        rendimento = calcular_rendimento_parcelamento(preco_cartao, parcelas, rendimento_mensal_pct)
         custo_efetivo = preco_cartao - rendimento
         resultados.append({"parcelas": parcelas, "custo_efetivo": round(custo_efetivo, 2)})
     return resultados

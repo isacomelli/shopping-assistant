@@ -80,7 +80,7 @@ def linha_oferta_para_saida(linha_oferta, config):
     feito na hora, pronto para servir na rota de listagem.
     """
     oferta = oferta_da_linha(linha_oferta, config)
-    resultado = calcular_oferta(oferta, float(config["cdi_mensal"]))
+    resultado = calcular_oferta(oferta, float(config["rendimento_mensal"]))
     saida = dict(linha_oferta)
     saida["resultado"] = resultado_como_dict(resultado)
     return saida
