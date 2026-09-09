@@ -1,6 +1,6 @@
-# Assistente de Compras da Reforma
+# Assistente de Compras
 
-Aplicação pessoal para calcular o custo real de uma compra, considerando preço no Pix, preço parcelado no cartão, pontos Livelo ou Esfera, cashback e o rendimento de deixar o dinheiro investido no CDI.
+Aplicação pessoal para calcular o custo real de uma compra, considerando preço no Pix, preço parcelado no cartão, pontos Livelo ou Esfera, cashback e o rendimento mensal líquido.
 
 Esta branch contém a versão migrada para uma arquitetura de API mais frontend separado. A versão original em Streamlit continua disponível na branch `streamlit_version`.
 
