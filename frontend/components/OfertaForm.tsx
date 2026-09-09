@@ -58,7 +58,7 @@ export function OfertaForm({
   }
 
   async function enviar() {
-    if (!dados.loja.trim() || dados.preco_pix <= 0 || dados.preco_cartao <= 0) {
+    if dados.loja.trim() && (dados.preco_pix <= 0 || dados.preco_cartao <= 0) {
       setErro("Preencha ao menos a loja, o preço no Pix e o preço no cartão.");
       return;
     }

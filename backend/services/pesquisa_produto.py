@@ -10,12 +10,12 @@ lojas que vendem o produto, ver scrapers/buscape.py.
 
 segundo, para cada loja encontrada, o modulo tenta casar o nome da
 loja com um parceiro Livelo ou Esfera ja cadastrado, atraves de
-database.db.buscar_parceiro_livelo_por_nome, que faz a comparacao
-por substring nos dois sentidos, do jeito que buscar_parceiro_para_loja
-espera. a busca sempre passa pelo modulo database.db, e nao por uma
-lista carregada em memoria antecipadamente, para que o cadastro de
-parceiros possa mudar entre uma pesquisa e outra sem precisar reiniciar
-nada.
+database.db.buscar_parceiro_livelo_por_nome, que delega o casamento
+em si para services/casamento_lojas.py, do jeito que
+buscar_parceiro_para_loja espera. a busca sempre passa pelo modulo
+database.db, e nao por uma lista carregada em memoria antecipadamente,
+para que o cadastro de parceiros possa mudar entre uma pesquisa e
+outra sem precisar reiniciar nada.
 
 quando uma loja encontrada no buscape nao bate com nenhum parceiro
 cadastrado, o resultado marca isso claramente, com pontos_por_real
@@ -57,10 +57,10 @@ def buscar_parceiro_para_loja(nome_loja):
     buscape.
 
     a comparacao em si e feita por database.db.buscar_parceiro_livelo_por_nome,
-    que compara por substring nos dois sentidos contra o nome e o
-    alias de cada parceiro. nomes bem diferentes do mesmo grupo, tipo
-    "magazine luiza" contra o apelido "magalu", so casam se o alias
-    correspondente estiver cadastrado.
+    que delega para services/casamento_lojas.py. nomes bem diferentes
+    do mesmo grupo, tipo "magazine luiza" contra o apelido "magalu",
+    casam mesmo sem alias cadastrado, atraves dos grupos de apelidos
+    conhecidos desse modulo, ver GRUPOS_DE_APELIDOS.
     """
     return db.buscar_parceiro_livelo_por_nome(nome_loja)
 

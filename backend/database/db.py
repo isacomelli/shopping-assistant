@@ -16,14 +16,17 @@ por parceiro, com o nome exatamente como ele costuma aparecer nos
 resultados do buscape, mais um alias opcional para apelidos do mesmo
 grupo, tipo "magalu" para "magazine luiza". a pesquisa automatica em
 services/pesquisa_produto.py usa buscar_parceiro_livelo_por_nome para
-casar cada loja encontrada com esse cadastro, comparando por
-substring nos dois sentidos contra o nome e o alias.
+casar cada loja encontrada com esse cadastro. o casamento em si, que
+reconhece tanto substring simples quanto apelidos de mercado
+conhecidos, tipo "magalu" para "magazine luiza", mora em
+services/casamento_lojas.py, ver esse modulo para os detalhes.
 """
 
 import sqlite3
-import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
+
+from services.casamento_lojas import encontrar_parceiro_equivalente
 
 CAMINHO_BANCO = Path(__file__).parent / "shopping.db"
 
@@ -517,12 +520,6 @@ def encontrar_oferta_do_historico(registro_id, produto_id):
 # apelidos do mesmo grupo que a pesquisa automatica tambem deve
 # reconhecer, tipo "magalu" para "magazine luiza".
 
-def _normalizar_nome(nome):
-    forma_normalizada = unicodedata.normalize("NFKD", nome or "")
-    sem_acento = "".join(c for c in forma_normalizada if not unicodedata.combining(c))
-    return " ".join(sem_acento.strip().lower().split())
-
-
 def listar_parceiros_livelo():
     with conexao() as conn:
         linhas = conn.execute(
@@ -581,23 +578,16 @@ def buscar_parceiro_livelo_por_nome(termo):
     alias mais se aproxima do termo informado, tipicamente o nome de
     uma loja encontrado na pesquisa automatica do buscape.
 
-    a comparacao e por substring nos dois sentidos, contra o nome e
-    contra o alias, o suficiente para nomes como "fast shop" e "fast
-    shop oficial", ou para um apelido cadastrado, tipo "magalu" para
-    "magazine luiza". devolve o primeiro parceiro que bater, ou none
-    quando nenhum casar.
+    o casamento em si acontece em
+    services.casamento_lojas.encontrar_parceiro_equivalente, que
+    reconhece tanto substring simples, o suficiente para nomes como
+    "fast shop" e "fast shop oficial", quanto grupos de apelidos de
+    mercado conhecidos, tipo "magalu" para "magazine luiza", mesmo
+    sem um alias cadastrado a mao para esse parceiro especifico.
+    devolve o primeiro parceiro que bater, ou none quando nenhum
+    casar.
     """
-    alvo = _normalizar_nome(termo)
-    if not alvo:
+    if not termo or not termo.strip():
         return None
 
-    for parceiro in listar_parceiros_livelo():
-        nome_normalizado = _normalizar_nome(parceiro["nome"])
-        alias_normalizado = _normalizar_nome(parceiro.get("alias"))
-
-        if nome_normalizado and (nome_normalizado in alvo or alvo in nome_normalizado):
-            return parceiro
-        if alias_normalizado and (alias_normalizado in alvo or alvo in alias_normalizado):
-            return parceiro
-
-    return None
+    return encontrar_parceiro_equivalente(termo, listar_parceiros_livelo())
