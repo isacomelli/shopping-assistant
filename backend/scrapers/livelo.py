@@ -42,7 +42,6 @@ facilitar achar esse caso especifico depois.
 import re
 from dataclasses import dataclass
 from pathlib import Path
-
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
@@ -319,5 +318,5 @@ def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_fal
 if __name__ == "__main__":
     resultado = buscar_parceiros_livelo(headless=False)
     print(f"{len(resultado)} parceiros encontrados")
-    for parceiro in resultado[:10]:
+    for parceiro in resultado:
         print(parceiro)

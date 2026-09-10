@@ -48,16 +48,16 @@ LIMITE_SIMILARIDADE = 0.82
 # conforme novos casos aparecerem nas pesquisas
 GRUPOS_DE_APELIDOS = [
     ["magalu", "magazine luiza"],
-    ["casas bahia", "grupo casas bahia", "via varejo", "via"],
+    ["casas bahia", "grupo casas bahia"],
     ["ponto", "ponto frio", "pontofrio"],
-    ["extra", "extra.com", "grupo pao de acucar", "gpa"],
-    ["americanas", "americanas.com", "b2w", "lojas americanas"],
+    ["extra", "extra.com"],
+    ["americanas", "americanas.com", "lojas americanas"],
     ["shoptime", "shop time"],
     ["submarino", "submarino.com"],
     ["kabum", "kabum!"],
     ["fast shop", "fastshop"],
     ["amazon", "amazon.com.br"],
-    ["carrefour", "carrefour.com", "atacadao"],
+    ["carrefour", "carrefour.com"],
     ["madeiramadeira", "madeira madeira"],
     ["leroy merlin", "leroymerlin"],
 ]
