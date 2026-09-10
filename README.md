@@ -32,7 +32,7 @@ O motor de cálculo (`engine/price_engine.py`), o acesso ao banco (`database/db.
 docker compose up --build
 ```
 
-A API sobe em `http://localhost:8000` (documentação interativa em `/docs`) e o site em `http://localhost:3000`.
+A API sobe em `http://localhost:8000` (documentação interativa em `/docs`) e o site em `http://localhost:3001`.
 
 ## Como rodar sem Docker
 
@@ -56,7 +56,7 @@ npm install
 npm run dev
 ```
 
-O site abre em `http://localhost:3000` e consulta a API em `http://localhost:8000`.
+O site abre em `http://localhost:3001` e consulta a API em `http://localhost:8000`.
 
 ## Como rodar os testes do backend
 
