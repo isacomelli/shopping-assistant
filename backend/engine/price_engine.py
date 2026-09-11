@@ -1,26 +1,18 @@
 """
 motor de calculo do preco efetivo de uma compra.
 
-este modulo e proposital mente puro, sem dependencia de banco de dados,
-scraper ou interface, para poder ser testado isoladamente com pytest.
+este modulo e proposital mente puro, sem dependencia de banco de dados, scraper ou interface, para poder ser testado isoladamente com pytest.
 
-sobre o calculo de milhas, ele segue a mesma logica de uma planilha
-que ja era usada antes deste app, resumida abaixo.
+sobre o calculo de milhas, ele segue a mesma logica de uma planilha que ja era usada antes deste app, resumida abaixo.
 
 pontos acumulados no site parceiro = pontos por real vezes valor do produto
 pontos acumulados no cartao = (valor do produto dividido pela cotacao do dolar) vezes pontos por dolar do cartao
 milhas acumuladas no site parceiro = pontos do site parceiro mais (pontos do site parceiro vezes percentual de transferencia bonificada)
 valor em milhas = (valor estimado do milheiro vezes milhas totais) dividido por 1000
 
-um detalhe importante, no pix nao existe cartao envolvido, entao a
-compra so gera pontos no site parceiro, sem o acumulo extra do cartao.
-ja no cartao parcelado, os dois acumulos contam ao mesmo tempo, o
-ponto do site parceiro e o ponto do proprio cartao.
+um detalhe importante, no pix nao existe cartao envolvido, entao a compra so gera pontos no site parceiro, sem o acumulo extra do cartao. ja no cartao parcelado, os dois acumulos contam ao mesmo tempo, o ponto do site parceiro e o ponto do proprio cartao.
 
-quando uma oferta nao tiver valor_milheiro preenchido, o calculo cai
-de volta para um valor fixo por ponto, atraves de valor_ponto, util
-para programas mais simples de cashback ou pontos sem conversao para
-milhas.
+quando uma oferta nao tiver valor_milheiro preenchido, o calculo cai de volta para um valor fixo por ponto, atraves de valor_ponto, util para programas mais simples de cashback ou pontos sem conversao para milhas.
 """
 
 from dataclasses import dataclass
@@ -29,25 +21,21 @@ from dataclasses import dataclass
 @dataclass
 class Oferta:
     """
-    representa uma oferta de compra, seja ela online, parceira de
-    pontos, loja fisica ou negociacao presencial.
+    representa uma oferta de compra, seja ela online, parceira de pontos, loja fisica ou negociacao presencial.
     """
 
     loja: str
     preco_pix: float
     preco_cartao: float
 
-    # preco bruto encontrado na pesquisa, antes de separar pix e
-    # cartao, usado so para registro no historico de precos, o
-    # calculo em si sempre usa preco_pix e preco_cartao separados
+    # preco bruto encontrado na pesquisa, antes de separar pix e cartao, usado so para registro no historico de precos, o calculo em si sempre usa preco_pix e preco_cartao separados
     preco: float = 0.0
 
     parcelas: int = 1
     tipo: str = "online"
     observacoes: str = ""
 
-    # link do produto na loja de origem, quando a oferta veio de uma
-    # pesquisa automatica, vazio para ofertas cadastradas a mao
+    # link do produto na loja de origem, quando a oferta veio de uma pesquisa automatica, vazio para ofertas cadastradas a mao
     url_produto: str = ""
 
     # site parceiro, tipo livelo ou esfera
@@ -61,8 +49,7 @@ class Oferta:
     percentual_bonus_transferencia: float = 0.0
     valor_milheiro: float = 0.0
 
-    # metodo alternativo, valor fixo por ponto, usado quando
-    # valor_milheiro nao estiver preenchido
+    # metodo alternativo, valor fixo por ponto, usado quando valor_milheiro nao estiver preenchido
     valor_ponto: float = 0.0
 
     # cashback e ajustes de preco
@@ -74,8 +61,7 @@ class Oferta:
 @dataclass
 class ResultadoOferta:
     """
-    resultado do calculo de uma oferta, com o detalhamento de cada
-    componente para poder mostrar por que essa opcao ganhou.
+    resultado do calculo de uma oferta, com o detalhamento de cada componente para poder mostrar por que essa opcao ganhou.
     """
 
     loja: str
@@ -98,11 +84,9 @@ class ResultadoOferta:
 
 def valor_presente_parcelas(preco_total, parcelas, rendimento_mensal_pct):
     """
-    calcula o valor presente de n parcelas iguais e sem juros,
-    descontadas pelo rendimento mensal líquido informado no perfil.
+    calcula o valor presente de n parcelas iguais e sem juros, descontadas pelo rendimento mensal líquido informado no perfil.
 
-    quanto maior o numero de parcelas, menor o valor presente, ou
-    seja, maior o beneficio de parcelar em vez de pagar tudo agora.
+    quanto maior o numero de parcelas, menor o valor presente, ou seja, maior o beneficio de parcelar em vez de pagar tudo agora.
     """
     if parcelas <= 1:
         return preco_total
@@ -119,8 +103,7 @@ def valor_presente_parcelas(preco_total, parcelas, rendimento_mensal_pct):
 
 def calcular_rendimento_parcelamento(preco_cartao, parcelas, rendimento_mensal_pct):
     """
-    quanto voce ganha, em reais, por poder parcelar em vez de pagar
-    tudo a vista no cartao.
+    quanto voce ganha, em reais, por poder parcelar em vez de pagar tudo a vista no cartao.
     """
     if parcelas <= 1:
         return 0.0
@@ -130,8 +113,7 @@ def calcular_rendimento_parcelamento(preco_cartao, parcelas, rendimento_mensal_p
 
 def calcular_pontos_parceiro(base_valor, pontos_por_real):
     """
-    pontos acumulados no site parceiro, tipo livelo ou esfera,
-    aplicando a taxa de pontos por real sobre o valor gasto.
+    pontos acumulados no site parceiro, tipo livelo ou esfera, aplicando a taxa de pontos por real sobre o valor gasto.
     """
     if pontos_por_real <= 0:
         return 0.0
@@ -140,8 +122,7 @@ def calcular_pontos_parceiro(base_valor, pontos_por_real):
 
 def calcular_pontos_cartao(base_valor, cotacao_dolar, pontos_por_dolar_cartao):
     """
-    pontos acumulados direto no cartao de credito, convertendo o
-    valor gasto para dolar antes de aplicar a taxa por dolar.
+    pontos acumulados direto no cartao de credito, convertendo o valor gasto para dolar antes de aplicar a taxa por dolar.
     """
     if pontos_por_dolar_cartao <= 0 or cotacao_dolar <= 0:
         return 0.0
@@ -150,16 +131,14 @@ def calcular_pontos_cartao(base_valor, cotacao_dolar, pontos_por_dolar_cartao):
 
 def calcular_milhas_parceiro_bonificadas(pontos_parceiro, percentual_bonus):
     """
-    milhas do site parceiro depois de aplicar o bonus de transferencia
-    vigente na promocao, quando houver.
+    milhas do site parceiro depois de aplicar o bonus de transferencia vigente na promocao, quando houver.
     """
     return pontos_parceiro * (1 + percentual_bonus / 100)
 
 
 def calcular_valor_em_milhas(milhas_totais, valor_milheiro):
     """
-    valor em reais de um total de milhas, dado o valor estimado do
-    milheiro.
+    valor em reais de um total de milhas, dado o valor estimado do milheiro.
     """
     if valor_milheiro <= 0:
         return 0.0
@@ -170,20 +149,16 @@ def calcular_valor_milhas_pix(base_valor, pontos_por_real, percentual_bonus, val
     """
     valor em reais das milhas geradas por uma compra no pix.
 
-    no pix nao existe cartao de credito envolvido, entao so o site
-    parceiro pontua, sem o acumulo extra de pontos do cartao.
+    no pix nao existe cartao de credito envolvido, entao so o site parceiro pontua, sem o acumulo extra de pontos do cartao.
     """
     pontos_parceiro = calcular_pontos_parceiro(base_valor, pontos_por_real)
     milhas_totais = calcular_milhas_parceiro_bonificadas(pontos_parceiro, percentual_bonus)
     return calcular_valor_em_milhas(milhas_totais, valor_milheiro)
 
 
-def calcular_valor_milhas_cartao(base_valor, pontos_por_real, cotacao_dolar,
-                                  pontos_por_dolar_cartao, percentual_bonus, valor_milheiro):
+def calcular_valor_milhas_cartao(base_valor, pontos_por_real, cotacao_dolar, pontos_por_dolar_cartao, percentual_bonus, valor_milheiro):
     """
-    valor em reais das milhas geradas por uma compra parcelada no
-    cartao, somando o acumulo do site parceiro, ja com o bonus de
-    transferencia, com o acumulo direto do proprio cartao.
+    valor em reais das milhas geradas por uma compra parcelada no cartao, somando o acumulo do site parceiro, ja com o bonus de transferencia, com o acumulo direto do proprio cartao.
     """
     pontos_parceiro = calcular_pontos_parceiro(base_valor, pontos_por_real)
     pontos_cartao = calcular_pontos_cartao(base_valor, cotacao_dolar, pontos_por_dolar_cartao)
@@ -194,9 +169,7 @@ def calcular_valor_milhas_cartao(base_valor, pontos_por_real, cotacao_dolar,
 
 def calcular_valor_pontos_fixo(base_valor, pontos_por_real, valor_ponto):
     """
-    metodo alternativo mais simples, um valor fixo por ponto, sem
-    conversao para milhas. usado quando a oferta nao tiver
-    valor_milheiro preenchido.
+    metodo alternativo mais simples, um valor fixo por ponto, sem conversao para milhas. usado quando a oferta nao tiver valor_milheiro preenchido.
     """
     if pontos_por_real <= 0 or valor_ponto <= 0:
         return 0.0
@@ -233,9 +206,7 @@ def _calcular_valor_pontos_cartao(oferta):
 
 def calcular_oferta(oferta: Oferta, rendimento_mensal_pct: float) -> ResultadoOferta:
     """
-    calcula o preco efetivo de uma oferta, tanto pagando pix quanto
-    pagando parcelado no cartao, e devolve qual das duas formas de
-    pagamento sai mais barata.
+    calcula o preco efetivo de uma oferta, tanto pagando pix quanto pagando parcelado no cartao, e devolve qual das duas formas de pagamento sai mais barata.
     """
     preco_anunciado = oferta.preco_cartao
 
@@ -287,8 +258,7 @@ def calcular_oferta(oferta: Oferta, rendimento_mensal_pct: float) -> ResultadoOf
 
 def ranquear_ofertas(ofertas, rendimento_mensal_pct):
     """
-    calcula todas as ofertas e devolve a lista ordenada da mais barata
-    para a mais cara, considerando o preco efetivo.
+    calcula todas as ofertas e devolve a lista ordenada da mais barata para a mais cara, considerando o preco efetivo.
     """
     resultados = [calcular_oferta(oferta, rendimento_mensal_pct) for oferta in ofertas]
     return sorted(resultados, key=lambda r: r.preco_efetivo)
@@ -296,8 +266,7 @@ def ranquear_ofertas(ofertas, rendimento_mensal_pct):
 
 def simular_parcelamento(preco_pix, preco_cartao, rendimento_mensal_pct, max_parcelas=12):
     """
-    simula o custo efetivo do cartao para 1 ate max_parcelas parcelas,
-    util para responder a partir de quantas vezes compensa parcelar.
+    simula o custo efetivo do cartao para 1 ate max_parcelas parcelas, util para responder a partir de quantas vezes compensa parcelar.
     """
     resultados = []
     for parcelas in range(1, max_parcelas + 1):

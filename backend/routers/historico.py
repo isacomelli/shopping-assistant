@@ -38,8 +38,7 @@ def excluir_historico(produto_id: int, registro_id: int):
 )
 def obter_oferta_do_historico(produto_id: int, registro_id: int):
     """
-    devolve a oferta ligada a um registro de historico, usada quando o
-    front quer abrir direto a edicao daquela oferta na calculadora.
+    devolve a oferta ligada a um registro de historico, usada quando o front quer abrir direto a edicao daquela oferta na calculadora.
     """
     _produto_ou_404(produto_id)
     oferta = db.encontrar_oferta_do_historico(registro_id, produto_id)

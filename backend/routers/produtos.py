@@ -14,15 +14,9 @@ router = APIRouter(prefix="/produtos", tags=["produtos"])
 
 def _com_melhor_oferta(produto):
     """
-    junta o produto com o melhor preco efetivo ja encontrado entre as
-    ofertas salvas, do jeito que a wishlist do streamlit mostrava.
+    junta o produto com o melhor preco efetivo ja encontrado entre as ofertas salvas, do jeito que a wishlist do streamlit mostrava.
 
-    o preco efetivo de cada oferta e recalculado na hora, com a
-    configuracao atual do perfil (rendimento mensal, cotacao do dolar
-    e valor do milheiro), em vez de usar o valor que ficou gravado no
-    banco no momento em que a oferta foi criada. assim, alterar o
-    perfil atualiza a melhor oferta mostrada na wishlist sem precisar
-    reeditar cada oferta uma por uma.
+    o preco efetivo de cada oferta e recalculado na hora, com a configuracao atual do perfil (rendimento mensal, cotacao do dolar e valor do milheiro), em vez de usar o valor que ficou gravado no banco no momento em que a oferta foi criada. assim, alterar o perfil atualiza a melhor oferta mostrada na wishlist sem precisar reeditar cada oferta uma por uma.
     """
     config = db.obter_configuracoes()
     ofertas = db.listar_ofertas_por_produto(produto["id"])

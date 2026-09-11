@@ -25,9 +25,7 @@ def salvar_perfil(payload: PerfilUpdate):
 @router.get("/cotacao-dolar", response_model=CotacaoDolarOut)
 def obter_cotacao_dolar_atual():
     """
-    consulta a cotacao do dolar numa api publica, usada para sugerir o
-    valor no formulario de perfil. se a consulta falhar, o front cai
-    de volta para o valor ja salvo no perfil.
+    consulta a cotacao do dolar numa api publica, usada para sugerir o valor no formulario de perfil. se a consulta falhar, o front cai de volta para o valor ja salvo no perfil.
     """
     cotacao = buscar_cotacao_dolar()
     return {"cotacao_dolar": cotacao, "encontrada": cotacao is not None}

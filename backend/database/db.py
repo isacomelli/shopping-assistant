@@ -1,31 +1,16 @@
 """
 camada de acesso ao banco sqlite do assistente de compras.
 
-todas as tabelas ja possuem a coluna user_id, mesmo que hoje so exista
-um unico usuario local, justamente para facilitar uma eventual
-migracao para um servico multiusuario na nuvem no futuro.
+todas as tabelas ja possuem a coluna user_id, mesmo que hoje so exista um unico usuario local, justamente para facilitar uma eventual migracao para um servico multiusuario na nuvem no futuro.
 
-sobre migracao de esquema, como o banco ja existe no disco de quem ja
-usava o app antes, nao da pra so mudar o CREATE TABLE, ele so roda na
-primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE
-dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja
-existe.
+sobre migracao de esquema, como o banco ja existe no disco de quem ja usava o app antes, nao da pra so mudar o CREATE TABLE, ele so roda na primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja existe.
 
-sobre a tabela livelo_parceiros, o cadastro e manual, feito uma vez
-por parceiro, com o nome exatamente como ele costuma aparecer nos
-resultados do buscape, mais um alias opcional para apelidos do mesmo
-grupo, tipo "magalu" para "magazine luiza". a pesquisa automatica em
-services/pesquisa_produto.py usa buscar_parceiro_livelo_por_nome para
-casar cada loja encontrada com esse cadastro. o casamento em si, que
-reconhece tanto substring simples quanto apelidos de mercado
-conhecidos, tipo "magalu" para "magazine luiza", mora em
-services/casamento_lojas.py, ver esse modulo para os detalhes.
+sobre a tabela livelo_parceiros, o cadastro e manual, feito uma vez por parceiro, com o nome exatamente como ele costuma aparecer nos resultados do buscape, mais um alias opcional para apelidos do mesmo grupo, tipo "magalu" para "magazine luiza". a pesquisa automatica em services/pesquisa_produto.py usa buscar_parceiro_livelo_por_nome para casar cada loja encontrada com esse cadastro. o casamento em si, que reconhece tanto substring simples quanto apelidos de mercado conhecidos, tipo "magalu" para "magazine luiza", mora em services/casamento_lojas.py, ver esse modulo para os detalhes.
 """
 
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-
 from services.casamento_lojas import encontrar_parceiro_equivalente
 
 CAMINHO_BANCO = Path(__file__).parent / "shopping.db"
@@ -50,10 +35,7 @@ def conexao():
 
 def _adicionar_coluna_se_nao_existir(conn, tabela, definicao_coluna):
     """
-    tenta adicionar uma coluna nova numa tabela ja existente, e
-    ignora o erro caso a coluna ja tenha sido criada numa execucao
-    anterior. e assim que o sqlite migra esquema em bancos que ja
-    estao em uso.
+    tenta adicionar uma coluna nova numa tabela ja existente, e ignora o erro caso a coluna ja tenha sido criada numa execucao anterior. e assim que o sqlite migra esquema em bancos que ja estao em uso.
     """
     try:
         conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {definicao_coluna}")
@@ -64,12 +46,7 @@ def _adicionar_coluna_se_nao_existir(conn, tabela, definicao_coluna):
 
 def _renomear_coluna_se_necessario(conn, tabela, coluna_antiga, coluna_nova):
     """
-    tenta renomear uma coluna existente, e ignora o erro quando a
-    coluna antiga ja nao existe mais, seja porque o banco e novo, seja
-    porque a renomeacao ja rodou numa execucao anterior. usado para
-    corrigir o nome da coluna de "cdi_mensal" para "rendimento_mensal",
-    ja que o valor nunca foi de fato o cdi, e sim o rendimento mensal
-    liquido informado pelo usuario.
+    tenta renomear uma coluna existente, e ignora o erro quando a coluna antiga ja nao existe mais, seja porque o banco e novo, seja porque a renomeacao ja rodou numa execucao anterior. usado para corrigir o nome da coluna de "cdi_mensal" para "rendimento_mensal", ja que o valor nunca foi de fato o cdi, e sim o rendimento mensal liquido informado pelo usuario.
     """
     try:
         conn.execute(f"ALTER TABLE {tabela} RENAME COLUMN {coluna_antiga} TO {coluna_nova}")
@@ -221,10 +198,7 @@ def obter_configuracoes():
 
 def salvar_configuracoes(rendimento_mensal, cotacao_dolar, valor_milheiro_padrao):
     """
-    salva o perfil financeiro. o campo de pontos por dolar padrao do
-    cartao nao entra mais aqui, porque cada cartao cadastrado ja tem
-    sua propria taxa de pontos por dolar, um padrao global so
-    duplicava essa informacao sem servir pra nada.
+    salva o perfil financeiro. o campo de pontos por dolar padrao do cartao nao entra mais aqui, porque cada cartao cadastrado ja tem sua propria taxa de pontos por dolar, um padrao global so duplicava essa informacao sem servir pra nada.
     """
     with conexao() as conn:
         conn.execute(
@@ -313,8 +287,7 @@ def atualizar_status_produto(produto_id, status):
 
 def excluir_produto(produto_id):
     """
-    remove o produto e tudo que depende dele, as ofertas cadastradas
-    e o historico de precos, para nao deixar linha orfa no banco.
+    remove o produto e tudo que depende dele, as ofertas cadastradas e o historico de precos, para nao deixar linha orfa no banco.
     """
     with conexao() as conn:
         produto = conn.execute(
@@ -338,10 +311,7 @@ def listar_ofertas_por_produto(produto_id):
         return [dict(linha) for linha in linhas]
 
 
-def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
-                     pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
-                     valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-                     confianca, preco_efetivo, preco, url_produto):
+def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco, url_produto):
     cursor = conn.execute(
         """
         INSERT INTO ofertas (
@@ -361,14 +331,9 @@ def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parce
     return cursor.lastrowid
 
 
-def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
-                      pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
-                      valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-                      confianca, preco_efetivo, preco=0.0, url_produto=""):
+def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0, url_produto=""):
     """
-    cadastra uma oferta a mao, tipicamente vinda do formulario manual
-    da calculadora. devolve o id da linha criada, para o chamador
-    poder linkar essa oferta a um registro de historico.
+    cadastra uma oferta a mao, tipicamente vinda do formulario manual da calculadora. devolve o id da linha criada, para o chamador poder linkar essa oferta a um registro de historico.
     """
     with conexao() as conn:
         return _inserir_oferta(
@@ -379,15 +344,9 @@ def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
         )
 
 
-def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco,
-                               parcelas, pontos_por_real, pontos_por_dolar_cartao,
-                               percentual_bonus_transferencia, valor_milheiro, cashback_pct,
-                               frete, cupom, observacoes, validade, confianca, preco_efetivo,
-                               url_produto):
+def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto):
     """
-    cadastra uma oferta encontrada pela pesquisa automatica no
-    buscape, mesma tabela da oferta manual, so que sempre com
-    preco e url_produto preenchidos. devolve o id da linha criada.
+    cadastra uma oferta encontrada pela pesquisa automatica no buscape, mesma tabela da oferta manual, so que sempre com preco e url_produto preenchidos. devolve o id da linha criada.
     """
     with conexao() as conn:
         return _inserir_oferta(
@@ -398,10 +357,7 @@ def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, p
         )
 
 
-def atualizar_oferta(oferta_id, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
-                      pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
-                      valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-                      confianca, preco_efetivo, preco=0.0):
+def atualizar_oferta(oferta_id, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0):
     with conexao() as conn:
         cursor = conn.execute(
             """
@@ -434,9 +390,7 @@ def excluir_oferta(oferta_id, produto_id):
 
 # historico de precos
 
-def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo,
-                         preco=None, preco_pix=None, preco_cartao=None,
-                         parcelas=None, oferta_id=None):
+def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo, preco=None, preco_pix=None, preco_cartao=None, parcelas=None, oferta_id=None):
     with conexao() as conn:
         cursor = conn.execute(
             """
@@ -445,8 +399,7 @@ def registrar_historico(produto_id, loja, preco_anunciado, preco_efetivo,
                 preco, preco_pix, preco_cartao, parcelas, oferta_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (produto_id, loja, preco_anunciado, preco_efetivo,
-             preco, preco_pix, preco_cartao, parcelas, oferta_id),
+            (produto_id, loja, preco_anunciado, preco_efetivo, preco, preco_pix, preco_cartao, parcelas, oferta_id),
         )
         return cursor.lastrowid
 
@@ -471,14 +424,9 @@ def excluir_historico(registro_id, produto_id):
 
 def encontrar_oferta_do_historico(registro_id, produto_id):
     """
-    devolve a oferta ligada a um registro de historico, para o front
-    poder abrir direto a edicao daquela oferta na calculadora.
+    devolve a oferta ligada a um registro de historico, para o front poder abrir direto a edicao daquela oferta na calculadora.
 
-    quando o registro tem oferta_id preenchido, o vinculo e direto.
-    registros mais antigos, criados antes dessa coluna existir, caem
-    de volta para um casamento por loja, escolhendo entre as ofertas
-    daquela loja a que tiver o preco efetivo mais proximo do que foi
-    salvo no historico.
+    quando o registro tem oferta_id preenchido, o vinculo e direto. registros mais antigos, criados antes dessa coluna existir, caem de volta para um casamento por loja, escolhendo entre as ofertas daquela loja a que tiver o preco efetivo mais proximo do que foi salvo no historico.
     """
     with conexao() as conn:
         historico = conn.execute(
@@ -514,11 +462,7 @@ def encontrar_oferta_do_historico(registro_id, produto_id):
 
 
 # parceiros livelo ou esfera, cadastro manual
-#
-# cadastrado uma vez por parceiro, com o nome exatamente como ele
-# aparece nos resultados do buscape. o alias e opcional, util para
-# apelidos do mesmo grupo que a pesquisa automatica tambem deve
-# reconhecer, tipo "magalu" para "magazine luiza".
+# cadastrado uma vez por parceiro, com o nome exatamente como ele aparece nos resultados do buscape. o alias e opcional, util para apelidos do mesmo grupo que a pesquisa automatica tambem deve reconhecer, tipo "magalu" para "magazine luiza".
 
 def listar_parceiros_livelo():
     with conexao() as conn:
@@ -530,8 +474,7 @@ def listar_parceiros_livelo():
 
 def adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias=""):
     """
-    cadastra ou atualiza, pelo nome, um parceiro Livelo ou Esfera com
-    a taxa de pontos por real informada a mao.
+    cadastra ou atualiza, pelo nome, um parceiro Livelo ou Esfera com a taxa de pontos por real informada a mao.
     """
     with conexao() as conn:
         conn.execute(
@@ -549,8 +492,7 @@ def adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias=""):
 
 def salvar_parceiros_livelo(parceiros):
     """
-    cadastra ou atualiza varios parceiros de uma vez, aceitando tanto
-    dicts quanto objetos com atributos nome, alias e pontos_padrao.
+    cadastra ou atualiza varios parceiros de uma vez, aceitando tanto dicts quanto objetos com atributos nome, alias e pontos_padrao.
     """
     for parceiro in parceiros:
         if isinstance(parceiro, dict):
@@ -574,18 +516,9 @@ def remover_parceiro_livelo(parceiro_id):
 
 def buscar_parceiro_livelo_por_nome(termo):
     """
-    procura, entre os parceiros cadastrados, aquele cujo nome ou
-    alias mais se aproxima do termo informado, tipicamente o nome de
-    uma loja encontrado na pesquisa automatica do buscape.
+    procura, entre os parceiros cadastrados, aquele cujo nome ou alias mais se aproxima do termo informado, tipicamente o nome de uma loja encontrado na pesquisa automatica do buscape.
 
-    o casamento em si acontece em
-    services.casamento_lojas.encontrar_parceiro_equivalente, que
-    reconhece tanto substring simples, o suficiente para nomes como
-    "fast shop" e "fast shop oficial", quanto grupos de apelidos de
-    mercado conhecidos, tipo "magalu" para "magazine luiza", mesmo
-    sem um alias cadastrado a mao para esse parceiro especifico.
-    devolve o primeiro parceiro que bater, ou none quando nenhum
-    casar.
+    o casamento em si acontece em services.casamento_lojas.encontrar_parceiro_equivalente, que reconhece tanto substring simples, o suficiente para nomes como "fast shop" e "fast shop oficial", quanto grupos de apelidos de mercado conhecidos, tipo "magalu" para "magazine luiza", mesmo sem um alias cadastrado a mao para esse parceiro especifico. devolve o primeiro parceiro que bater, ou none quando nenhum casar.
     """
     if not termo or not termo.strip():
         return None
