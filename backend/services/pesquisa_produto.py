@@ -29,7 +29,7 @@ from typing import Optional
 from database import db
 from engine.price_engine import Oferta, ResultadoOferta, calcular_oferta
 
-VALOR_MILHEIRO_PADRAO_PESQUISA = 15.0
+VALOR_MILHEIRO_PADRAO_PESQUISA = 30.0
 BONUS_TRANSFERENCIA_PADRAO_PESQUISA = 80.0
 PARCELAS_PADRAO_PESQUISA = 6
 

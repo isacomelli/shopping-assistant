@@ -16,7 +16,7 @@ const VAZIO: OfertaPayload = {
   pontos_por_real: 0,
   pontos_por_dolar_cartao: 0,
   percentual_bonus_transferencia: 80,
-  valor_milheiro: 15,
+  valor_milheiro: 30,
   cashback_pct: 0,
   frete: 0,
   cupom: 0,

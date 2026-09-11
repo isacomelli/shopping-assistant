@@ -1,42 +1,18 @@
 """
 scraper publico de parceiros da livelo.
 
-este modulo segue a mesma separacao de responsabilidades do scraper
-do buscape, ver scrapers/buscape.py. o navegador so e usado para
-abrir a pagina publica de parceiros do compre e pontue, sem
-autenticacao e sem login em conta, e coletar o html renderizado,
-atraves de pagina.content(). a partir dai, todo o trabalho de achar
-cada parceiro, seu codigo, nome e taxa de pontos acontece fora do
-navegador, na funcao parsear_html_livelo, usando o beautifulsoup para
-selecionar os links de parceiro e expressoes regulares para ler o
-texto de cada link, ja que a livelo nao expoe atributos estaveis tipo
-data-testid ou data-area nesses links, so o texto corrido do cartao.
+este modulo segue a mesma separacao de responsabilidades do scraper do buscape, ver scrapers/buscape.py. o navegador so e usado para abrir a pagina publica de parceiros do compre e pontue, sem autenticacao e sem login em conta, e coletar o html renderizado, atraves de pagina.content(). a partir dai, todo o trabalho de achar cada parceiro, seu codigo, nome e taxa de pontos acontece fora do navegador, na funcao parsear_html_livelo, usando o beautifulsoup para selecionar os links de parceiro e expressoes regulares para ler o texto de cada link, ja que a livelo nao expoe atributos estaveis tipo data-testid ou data-area nesses links, so o texto corrido do cartao.
 
-essa separacao traz o mesmo beneficio que tem no buscape, dá para
-reprocessar um html ja salvo em disco sem abrir o navegador de novo,
-util tanto para ajustar as expressoes regulares quanto para conferir
-rapidamente o que uma coleta antiga trouxe, veja debug_scraper.py,
-opcao --reparsear.
+essa separacao traz o mesmo beneficio que tem no buscape, dá para reprocessar um html ja salvo em disco sem abrir o navegador de novo, util tanto para ajustar as expressoes regulares quanto para conferir rapidamente o que uma coleta antiga trouxe, veja debug_scraper.py, opcao --reparsear.
 
-este modulo nao acessa dados privados de nenhum usuario, apenas as
-taxas de pontuacao e promocoes publicadas em
-
-https://www.livelo.com.br/juntar-pontos/todos-os-parceiros
+este modulo nao acessa dados privados de nenhum usuario, apenas as taxas de pontuacao e promocoes publicadas em https://www.livelo.com.br/juntar-pontos/todos-os-parceiros
 
 dois pontos importantes sobre como este scraper funciona.
 
-primeiro, a lista de parceiros carrega aos poucos conforme a pagina e
-rolada, entao o scraper simula rolagem ate o final antes de coletar o
-html, do contrario so os primeiros parceiros aparecem.
+primeiro, a lista de parceiros carrega aos poucos conforme a pagina e rolada, entao o scraper simula rolagem ate o final antes de coletar o html, do contrario so os primeiros parceiros aparecem.
 
-segundo, o site pode mudar a qualquer momento, ou bloquear o acesso
-automatizado, como ja acontece hoje atraves do akamai a nivel de
-dominio, ver o comentario no topo de database/db.py. o html da
-ultima coleta, sucesso ou falha, fica sempre salvo em
-ultimo_html_livelo.html, ao lado deste arquivo, para poder ser
-reprocessado sem precisar de rede. quando a coleta falhar por
-completo, o mesmo html tambem e salvo em debug_livelo.html, para
-facilitar achar esse caso especifico depois.
+segundo, o site pode mudar a qualquer momento, ou bloquear o acesso automatizado, como ja acontece hoje atraves do akamai a nivel de dominio, ver o comentario no topo de database/db.py. o html da
+ultima coleta, sucesso ou falha, fica sempre salvo em ultimo_html_livelo.html, ao lado deste arquivo, para poder ser reprocessado sem precisar de rede. quando a coleta falhar por completo, o mesmo html tambem e salvo em debug_livelo.html, para facilitar achar esse caso especifico depois.
 """
 
 import re
@@ -49,10 +25,7 @@ URL_PARCEIROS = "https://www.livelo.com.br/juntar-pontos/todos-os-parceiros"
 
 CAMINHO_DEBUG_HTML = Path(__file__).parent / "debug_livelo.html"
 
-# html completo da ultima coleta, sucesso ou falha, sempre
-# sobrescrito. serve para ajustar as expressoes regulares abaixo sem
-# precisar abrir o navegador de novo, veja parsear_html_livelo e
-# debug_scraper.py
+# html completo da ultima coleta, sucesso ou falha, sempre sobrescrito. serve para ajustar as expressoes regulares abaixo sem precisar abrir o navegador de novo, veja parsear_html_livelo e debug_scraper.py
 CAMINHO_ULTIMO_HTML = Path(__file__).parent / "ultimo_html_livelo.html"
 
 USER_AGENT = (
@@ -64,9 +37,7 @@ SCRIPT_ANTI_DETECCAO = """
 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 """
 
-# seletor css do link de cada parceiro, funciona tanto para o
-# playwright quanto para o beautifulsoup, ja que os dois aceitam a
-# mesma sintaxe de seletor
+# seletor css do link de cada parceiro, funciona tanto para o playwright quanto para o beautifulsoup, ja que os dois aceitam a mesma sintaxe de seletor
 SELETOR_LINK_PARCEIRO = 'a[href*="/juntar-pontos/parceiros/"]'
 
 SELETORES_BANNER_COOKIES = [
@@ -97,8 +68,7 @@ class ParceiroLivelo:
 
 class ErroScraperLivelo(Exception):
     """
-    erro especifico do scraper, para diferenciar falha de rede ou de
-    bloqueio de bot de um erro generico de programacao.
+    erro especifico do scraper, para diferenciar falha de rede ou de bloqueio de bot de um erro generico de programacao.
     """
 
 
@@ -119,9 +89,7 @@ def _parse_taxa_pontos(trecho):
 
 def _extrair_parceiro(href, texto_completo):
     """
-    monta um ParceiroLivelo a partir do href e do texto de um link de
-    parceiro ja localizado, seja pelo playwright ou pelo
-    beautifulsoup, sem se importar com quem coletou esse texto.
+    monta um ParceiroLivelo a partir do href e do texto de um link de parceiro ja localizado, seja pelo playwright ou pelo beautifulsoup, sem se importar com quem coletou esse texto.
     """
     encontrado_codigo = PADRAO_CODIGO.search(href)
     if not encontrado_codigo:
@@ -163,15 +131,9 @@ def _extrair_parceiro(href, texto_completo):
 
 def parsear_html_livelo(html):
     """
-    extrai a lista de parceiros a partir do html bruto da pagina de
-    parceiros da livelo, sem depender do playwright nem de rede, util
-    tanto para ajustar as expressoes regulares quanto para
-    reprocessar uma coleta antiga sem consultar o site de novo, veja
-    debug_scraper.py, opcao --reparsear.
+    extrai a lista de parceiros a partir do html bruto da pagina de parceiros da livelo, sem depender do playwright nem de rede, util tanto para ajustar as expressoes regulares quanto para reprocessar uma coleta antiga sem consultar o site de novo, veja debug_scraper.py, opcao --reparsear.
 
-    deduplica pelo codigo do parceiro, mantendo a primeira ocorrencia
-    encontrada, ja que a mesma pagina pode listar o mesmo parceiro
-    mais de uma vez em situacoes raras de layout.
+    deduplica pelo codigo do parceiro, mantendo a primeira ocorrencia encontrada, ja que a mesma pagina pode listar o mesmo parceiro mais de uma vez em situacoes raras de layout.
     """
     soup = BeautifulSoup(html, "html.parser")
 
@@ -207,9 +169,7 @@ def _fechar_banner_cookies(pagina):
 
 def _rolar_ate_carregar_tudo(pagina, tentativas_sem_mudanca=3):
     """
-    a lista de parceiros e carregada aos poucos, entao rola a pagina
-    ate o final repetidas vezes, ate a altura da pagina parar de
-    aumentar, sinal de que tudo ja foi carregado.
+    a lista de parceiros e carregada aos poucos, entao rola a pagina ate o final repetidas vezes, ate a altura da pagina parar de aumentar, sinal de que tudo ja foi carregado.
     """
     altura_anterior = 0
     sem_mudanca = 0
@@ -231,10 +191,7 @@ def _rolar_ate_carregar_tudo(pagina, tentativas_sem_mudanca=3):
 
 def _coletar_html_pagina_parceiros(timeout_ms, headless):
     """
-    abre a pagina publica de parceiros da livelo num navegador
-    headless, rola ate carregar tudo, e devolve o html renderizado,
-    sem fazer nenhuma extracao aqui, isso fica por conta de
-    parsear_html_livelo. nao faz login, nao acessa conta nenhuma.
+    abre a pagina publica de parceiros da livelo num navegador headless, rola ate carregar tudo, e devolve o html renderizado, sem fazer nenhuma extracao aqui, isso fica por conta de parsear_html_livelo. nao faz login, nao acessa conta nenhuma.
     """
     with sync_playwright() as playwright:
         navegador = playwright.chromium.launch(
@@ -250,9 +207,7 @@ def _coletar_html_pagina_parceiros(timeout_ms, headless):
         pagina = guia.new_page()
 
         try:
-            # domcontentloaded em vez de networkidle, porque a pagina
-            # da livelo mantem chamadas de fundo continuas, o que
-            # fazia o networkidle nunca resolver e estourar o timeout
+            # domcontentloaded em vez de networkidle, porque a pagina da livelo mantem chamadas de fundo continuas, o que fazia o networkidle nunca resolver e estourar o timeout
             pagina.goto(URL_PARCEIROS, timeout=timeout_ms, wait_until="domcontentloaded")
 
             _fechar_banner_cookies(pagina)
@@ -280,17 +235,11 @@ def _coletar_html_pagina_parceiros(timeout_ms, headless):
 
 def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_falha=True):
     """
-    abre a pagina publica de parceiros da livelo e devolve a lista
-    completa de parceiros encontrados, combinando a coleta do html
-    pelo playwright com a extracao pura em parsear_html_livelo.
+    abre a pagina publica de parceiros da livelo e devolve a lista completa de parceiros encontrados, combinando a coleta do html pelo playwright com a extracao pura em parsear_html_livelo.
 
-    o html da coleta e sempre salvo em ultimo_html_livelo.html, sucesso
-    ou falha, e adicionalmente em debug_livelo.html quando nenhum
-    parceiro for reconhecido, para facilitar achar esse caso depois.
+    o html da coleta e sempre salvo em ultimo_html_livelo.html, sucesso ou falha, e adicionalmente em debug_livelo.html quando nenhum parceiro for reconhecido, para facilitar achar esse caso depois.
 
-    levanta ErroScraperLivelo quando a pagina nao trouxer nenhum
-    parceiro reconhecivel dentro do tempo limite, o chamador decide
-    se mostra esse erro ao usuario.
+    levanta ErroScraperLivelo quando a pagina nao trouxer nenhum parceiro reconhecivel dentro do tempo limite, o chamador decide se mostra esse erro ao usuario.
     """
     html_pagina = _coletar_html_pagina_parceiros(timeout_ms, headless)
 
@@ -303,13 +252,7 @@ def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_fal
         if salvar_debug_em_falha and html_pagina:
             CAMINHO_DEBUG_HTML.write_text(html_pagina, encoding="utf-8")
         raise ErroScraperLivelo(
-            "a pagina abriu, mas nenhum parceiro foi reconhecido a tempo. isso "
-            "costuma acontecer quando o site bloqueia o navegador automatizado, "
-            "mostra um banner novo por cima da lista, ou muda o layout. o html "
-            f"foi salvo em {CAMINHO_ULTIMO_HTML}, e tambem em {CAMINHO_DEBUG_HTML}, "
-            "para conferencia. reprocesse esse html com "
-            "python debug_scraper.py livelo qualquer --reparsear "
-            "scrapers/ultimo_html_livelo.html enquanto ajusta os seletores"
+            f"a pagina abriu, mas nenhum parceiro foi reconhecido a tempo. isso costuma acontecer quando o site bloqueia o navegador automatizado, mostra um banner novo por cima da lista, ou muda o layout. o html foi salvo em {CAMINHO_ULTIMO_HTML}, e tambem em {CAMINHO_DEBUG_HTML}, para conferencia. reprocesse esse html com python debug_scraper.py livelo qualquer --reparsear scrapers/ultimo_html_livelo.html enquanto ajusta os seletores"
         )
 
     return parceiros

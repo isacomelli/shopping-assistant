@@ -68,7 +68,7 @@ def test_montar_oferta_usa_pontos_do_parceiro_casado(monkeypatch):
     assert parceiro["nome"] == "Amazon"
     assert oferta.pontos_por_real == 10.0
     assert oferta.parcelas == 6
-    assert oferta.valor_milheiro == 15.0
+    assert oferta.valor_milheiro == 30.0
     assert oferta.percentual_bonus_transferencia == 80.0
     assert distincao_confiavel is True
 

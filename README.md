@@ -79,7 +79,7 @@ milhas totais = milhas do site parceiro com bônus + pontos do cartão
 valor em milhas = (valor do milheiro * milhas totais) / 1000
 ```
 
-No Pix não existe cartão envolvido, então só o site parceiro pontua. No cartão parcelado, os dois acúmulos contam ao mesmo tempo. Por padrão, o valor do milheiro é R$ 15 e os pontos por dólar no cartão são 3, ambos ajustáveis no perfil ou por oferta. Quando uma oferta não tiver o valor do milheiro preenchido, o cálculo cai de volta para um valor fixo por ponto.
+No Pix não existe cartão envolvido, então só o site parceiro pontua. No cartão parcelado, os dois acúmulos contam ao mesmo tempo. Por padrão, o valor do milheiro é R$ 30 e os pontos por dólar no cartão são 3, ambos ajustáveis no perfil ou por oferta. Quando uma oferta não tiver o valor do milheiro preenchido, o cálculo cai de volta para um valor fixo por ponto.
 
 ## Sobre a pesquisa automática
 

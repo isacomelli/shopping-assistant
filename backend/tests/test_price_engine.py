@@ -47,7 +47,7 @@ def test_valor_pontos_fixo_zero_sem_taxa_ou_sem_valor_do_ponto():
 
 def test_valor_milhas_pix_nao_soma_pontos_de_cartao():
     valor_pix = calcular_valor_milhas_pix(
-        base_valor=1000, pontos_por_real=10, percentual_bonus=0, valor_milheiro=15,
+        base_valor=1000, pontos_por_real=10, percentual_bonus=0, valor_milheiro=30,
     )
     assert valor_pix == 150.0
 
@@ -55,20 +55,20 @@ def test_valor_milhas_pix_nao_soma_pontos_de_cartao():
 def test_valor_milhas_cartao_soma_pontos_parceiro_e_pontos_cartao():
     valor_cartao = calcular_valor_milhas_cartao(
         base_valor=1000, pontos_por_real=10, cotacao_dolar=5.0,
-        pontos_por_dolar_cartao=3, percentual_bonus=0, valor_milheiro=15,
+        pontos_por_dolar_cartao=3, percentual_bonus=0, valor_milheiro=30,
     )
     assert valor_cartao == 159.0
 
 
 def test_valor_milhas_cartao_maior_que_pix_quando_ha_pontos_no_cartao():
-    valor_pix = calcular_valor_milhas_pix(1000, 10, 0, 15)
-    valor_cartao = calcular_valor_milhas_cartao(1000, 10, 5.0, 3, 0, 15)
+    valor_pix = calcular_valor_milhas_pix(1000, 10, 0, 30)
+    valor_cartao = calcular_valor_milhas_cartao(1000, 10, 5.0, 3, 0, 30)
     assert valor_cartao > valor_pix
 
 
 def test_bonus_de_transferencia_aumenta_o_valor_das_milhas():
-    sem_bonus = calcular_valor_milhas_pix(1000, 10, 0, 15)
-    com_bonus = calcular_valor_milhas_pix(1000, 10, 80, 15)
+    sem_bonus = calcular_valor_milhas_pix(1000, 10, 0, 30)
+    com_bonus = calcular_valor_milhas_pix(1000, 10, 80, 30)
     assert com_bonus > sem_bonus
 
 
@@ -89,12 +89,12 @@ def test_calcular_oferta_usa_milheiro_quando_valor_milheiro_preenchido():
         cotacao_dolar=5.3,
         pontos_por_dolar_cartao=3,
         percentual_bonus_transferencia=80,
-        valor_milheiro=15,
+        valor_milheiro=30,
     )
     resultado = calcular_oferta(oferta, rendimento_mensal_pct=1.1)
 
-    valor_esperado_pix = calcular_valor_milhas_pix(1571.00, 10, 80, 15)
-    valor_esperado_cartao = calcular_valor_milhas_cartao(1651.37, 10, 5.3, 3, 80, 15)
+    valor_esperado_pix = calcular_valor_milhas_pix(1571.00, 10, 80, 30)
+    valor_esperado_cartao = calcular_valor_milhas_cartao(1651.37, 10, 5.3, 3, 80, 30)
 
     assert round(resultado.valor_pontos_pix, 4) == round(valor_esperado_pix, 4)
     assert round(resultado.valor_pontos_cartao, 4) == round(valor_esperado_cartao, 4)
