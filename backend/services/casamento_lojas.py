@@ -87,7 +87,6 @@ def _grupo_de_apelidos(nome_normalizado):
     um sufixo extra, tipo "magazine luiza oficial". devolve none
     quando o nome nao pertencer a nenhum grupo cadastrado.
     """
-    print(f'{nome_normalizado=}')
     for grupo in GRUPOS_DE_APELIDOS:
         for apelido in grupo:
             if _bate_por_substring(normalizar_nome_loja(apelido), nome_normalizado):
@@ -108,9 +107,6 @@ def nomes_equivalentes(nome_a, nome_b):
     normalizado_a = normalizar_nome_loja(nome_a)
     normalizado_b = normalizar_nome_loja(nome_b)
 
-    print(f'{normalizado_a=}')
-    print(f'{normalizado_b=}')
-
     if not normalizado_a or not normalizado_b:
         return False
 
@@ -118,7 +114,6 @@ def nomes_equivalentes(nome_a, nome_b):
         return True
 
     grupo_a = _grupo_de_apelidos(normalizado_a)
-    print(f'{grupo_a=}')
     if grupo_a is not None:
         for apelido in grupo_a:
             if _bate_por_substring(normalizar_nome_loja(apelido), normalizado_b):

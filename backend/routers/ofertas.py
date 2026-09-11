@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from database import db
 from engine.price_engine import calcular_oferta, simular_parcelamento
 from scrapers.buscape import ErroScraperBuscape
+from scrapers.livelo import ErroScraperLivelo, buscar_parceiros_livelo
 from services.pesquisa_produto import pesquisar_produto_automaticamente
 
 from calculo import linha_oferta_para_saida, oferta_do_payload, resultado_como_dict
@@ -224,4 +225,34 @@ def simular(payload: SimulacaoParcelamentoIn):
 
 @router.get("/parceiros-livelo", response_model=list[ParceiroLiveloOut])
 def listar_parceiros_livelo():
+    return db.listar_parceiros_livelo()
+
+
+@router.post("/parceiros-livelo/atualizar", response_model=list[ParceiroLiveloOut])
+def atualizar_parceiros_livelo():
+    """
+    roda o scraper da livelo, que le a pagina publica de todos os
+    parceiros, e grava o resultado na tabela livelo_parceiros,
+    substituindo a taxa de pontos de cada parceiro ja cadastrado e
+    criando os que ainda nao existiam. e essa gravacao que faltava,
+    o scraper em scrapers/livelo.py so devolvia a lista em memoria,
+    sem nunca chamar db.salvar_parceiros_livelo.
+
+    depois de chamar essa rota, a pesquisa automatica em
+    services/pesquisa_produto.py passa a casar as lojas do buscape
+    contra parceiros atualizados, atraves de
+    db.buscar_parceiro_livelo_por_nome.
+
+    roda de forma sincrona, num navegador headless, o que pode levar
+    alguns segundos, ja que a pagina da livelo carrega a lista aos
+    poucos conforme a rolagem.
+    """
+    try:
+        parceiros = buscar_parceiros_livelo()
+    except ErroScraperLivelo as erro:
+        raise HTTPException(
+            status_code=502, detail=f"Não foi possível atualizar os parceiros da Livelo agora, {erro}",
+        )
+
+    db.salvar_parceiros_livelo(parceiros)
     return db.listar_parceiros_livelo()

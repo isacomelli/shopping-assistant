@@ -106,3 +106,9 @@ export interface ParcelaSimulada {
   parcelas: number;
   custo_efetivo: number;
 }
+
+export interface ParceiroLivelo {
+  nome: string;
+  alias: string;
+  pontos_padrao: number;
+}

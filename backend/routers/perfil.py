@@ -1,17 +1,13 @@
 """
-rotas do perfil financeiro, rendimento mensal liquido, cotacao do
-dolar, valor do milheiro padrao e os cartoes de credito cadastrados.
+rotas do perfil financeiro, rendimento mensal liquido, cotacao do dolar, valor do milheiro padrao e os cartoes de credito cadastrados.
 """
 
 from fastapi import APIRouter, HTTPException
-
 from database import db
 from services.cambio import buscar_cotacao_dolar
-
 from schemas import CartaoCreate, CartaoOut, CotacaoDolarOut, PerfilOut, PerfilUpdate
 
 router = APIRouter(prefix="/perfil", tags=["perfil"])
-
 
 @router.get("", response_model=PerfilOut)
 def obter_perfil():

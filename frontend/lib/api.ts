@@ -3,6 +3,7 @@ import type {
   HistoricoItem,
   Oferta,
   OfertaPayload,
+  ParceiroLivelo,
   ParcelaSimulada,
   Perfil,
   Produto,
@@ -96,6 +97,11 @@ export const api = {
     requisitar<void>(`/produtos/${produtoId}/ofertas/${ofertaId}`, { method: "DELETE" }),
   pesquisarAutomaticamente: (produtoId: number) =>
     requisitar<ResultadoAutomatico[]>(`/produtos/${produtoId}/pesquisar`, { method: "POST" }),
+
+  // parceiros livelo ou esfera
+  listarParceirosLivelo: () => requisitar<ParceiroLivelo[]>("/parceiros-livelo"),
+  atualizarParceirosLivelo: () =>
+    requisitar<ParceiroLivelo[]>("/parceiros-livelo/atualizar", { method: "POST" }),
   simularParcelamento: (payload: {
     preco_pix: number;
     preco_cartao: number;
