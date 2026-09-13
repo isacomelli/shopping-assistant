@@ -1,18 +1,17 @@
 """
 scraper publico de parceiros da livelo.
 
-este modulo segue a mesma separacao de responsabilidades do scraper do buscape, ver scrapers/buscape.py. o navegador so e usado para abrir a pagina publica de parceiros do compre e pontue, sem autenticacao e sem login em conta, e coletar o html renderizado, atraves de pagina.content(). a partir dai, todo o trabalho de achar cada parceiro, seu codigo, nome e taxa de pontos acontece fora do navegador, na funcao parsear_html_livelo, usando o beautifulsoup para selecionar os links de parceiro e expressoes regulares para ler o texto de cada link, ja que a livelo nao expoe atributos estaveis tipo data-testid ou data-area nesses links, so o texto corrido do cartao.
+este modulo segue a mesma separacao de responsabilidades do scraper do buscape, ver scrapers/buscape.py. o navegador so e usado para abrir a pagina publica de parceiros do compre e pontue, sem autenticacao e sem login em conta, e coletar o html renderizado, atraves de pagina.content(). a partir dai, todo o trabalho de achar cada parceiro, seu codigo, nome e taxa de pontos acontece fora do navegador, na funcao parsear_html_livelo, usando o beautifulsoup. 
+
+um detalhe importante, o nome do parceiro nao aparece mais como texto visivel no card, so no atributo alt da logo, tipo <img alt="Logo Magalu">, texto de atributo que link.get_text() nao enxerga. por isso o nome vem de _extrair_nome, lendo o alt da imagem, com o slug da propria url como plano b, ver esse comentario la para os detalhes.
 
 essa separacao traz o mesmo beneficio que tem no buscape, dá para reprocessar um html ja salvo em disco sem abrir o navegador de novo, util tanto para ajustar as expressoes regulares quanto para conferir rapidamente o que uma coleta antiga trouxe, veja debug_scraper.py, opcao --reparsear.
 
 este modulo nao acessa dados privados de nenhum usuario, apenas as taxas de pontuacao e promocoes publicadas em https://www.livelo.com.br/juntar-pontos/todos-os-parceiros
 
 dois pontos importantes sobre como este scraper funciona.
-
 primeiro, a lista de parceiros carrega aos poucos conforme a pagina e rolada, entao o scraper simula rolagem ate o final antes de coletar o html, do contrario so os primeiros parceiros aparecem.
-
-segundo, o site pode mudar a qualquer momento, ou bloquear o acesso automatizado, como ja acontece hoje atraves do akamai a nivel de dominio, ver o comentario no topo de database/db.py. o html da
-ultima coleta, sucesso ou falha, fica sempre salvo em ultimo_html_livelo.html, ao lado deste arquivo, para poder ser reprocessado sem precisar de rede. quando a coleta falhar por completo, o mesmo html tambem e salvo em debug_livelo.html, para facilitar achar esse caso especifico depois.
+segundo, o site pode mudar a qualquer momento, ou bloquear o acesso automatizado, como ja acontece hoje atraves do akamai a nivel de dominio, ver o comentario no topo de database/db.py. o html da ultima coleta, sucesso ou falha, fica sempre salvo em ultimo_html_livelo.html, ao lado deste arquivo, para poder ser reprocessado sem precisar de rede. quando a coleta falhar por completo, o mesmo html tambem e salvo em debug_livelo.html, para facilitar achar esse caso especifico depois.
 """
 
 import re
@@ -48,10 +47,11 @@ SELETORES_BANNER_COOKIES = [
 ]
 
 PADRAO_CODIGO = re.compile(r"/parceiros/[^/]+/([A-Za-z0-9]+)$")
+PADRAO_SLUG = re.compile(r"/parceiros/([^/]+)/[A-Za-z0-9]+$")
 PADRAO_PONTOS = re.compile(r"(\d+)\s*ponto[s]?\s*por\s*(r\$|u\$)\s*([\d.,]+)", re.IGNORECASE)
 PADRAO_EM_PROMOCAO = re.compile(r"^\s*(promoção|nova)", re.IGNORECASE)
 PADRAO_ERAM = re.compile(r"eram\s*(\d+)\s*ponto[s]?", re.IGNORECASE)
-PADRAO_NOME = re.compile(r"logo\s+(.*?)(?=\s*(?:até\s*)?\d+\s*ponto)", re.IGNORECASE)
+PADRAO_PREFIXO_LOGO = re.compile(r"^logo\s+", re.IGNORECASE)
 
 
 @dataclass
@@ -64,6 +64,8 @@ class ParceiroLivelo:
     pontos_clube: float
     em_promocao: bool
     pontos_anteriores: float
+    # apelido derivado do slug da propria url, tipo "magalu" em .../parceiros/magalu/MZL, usado como candidato extra no casamento de nomes em services/casamento_lojas.py, mesmo quando o nome principal vier certo
+    alias: str = ""
 
 
 class ErroScraperLivelo(Exception):
@@ -87,21 +89,63 @@ def _parse_taxa_pontos(trecho):
     return pontos / base, moeda
 
 
-def _extrair_parceiro(href, texto_completo):
+def _slug_do_href(href):
     """
-    monta um ParceiroLivelo a partir do href e do texto de um link de parceiro ja localizado, seja pelo playwright ou pelo beautifulsoup, sem se importar com quem coletou esse texto.
+    devolve o trecho legivel da url do parceiro, por exemplo "magalu" em .../parceiros/magalu/MZL, ou none quando o href nao seguir esse formato.
     """
+    encontrado = PADRAO_SLUG.search(href)
+    if not encontrado:
+        return None
+    return encontrado.group(1)
+
+
+def _nome_a_partir_do_slug(slug):
+    """
+    transforma um slug de url, tipo "consorcio-magalu", num nome legivel, "Consorcio Magalu", so para ter algo melhor que o codigo quando a logo nao carregar.
+    """
+    return " ".join(parte.capitalize() for parte in slug.replace("-", " ").split())
+
+
+def _extrair_nome(link, codigo, slug):
+    """
+    o nome do parceiro nao aparece mais como texto visível no card, so no atributo alt da logo, tipo <img alt="Logo Magalu">. get_text() do beautifulsoup nao le atributos, so texto de no, entao o nome precisa vir daqui, e nao de uma expressao regular em cima do texto do link.
+
+    quando a logo nao carregou naquela copia especifica do card, o que acontece as vezes quando o mesmo parceiro aparece mais de uma vez na pagina, cai para o slug da propria url, e so em ultimo caso para o codigo, que nao serve pra casar com o nome da loja no buscape.
+    
+    Zdevolve o nome e se ele veio de fato da logo, para a deduplicacao em parsear_html_livelo preferir a copia com logo quando as duas existirem.
+    """
+    img = link.find("img")
+    alt = (img.get("alt") or "").strip() if img else ""
+
+    if alt:
+        nome = PADRAO_PREFIXO_LOGO.sub("", alt).strip()
+        if nome:
+            return nome, True
+
+    if slug:
+        return _nome_a_partir_do_slug(slug), False
+
+    return codigo, False
+
+
+def _extrair_parceiro(link):
+    """
+    monta um ParceiroLivelo a partir de um link de parceiro ja localizado pelo beautifulsoup, lendo o codigo e o apelido da propria url, o nome do atributo alt da logo, e o restante dos dados do texto visivel do card.
+    """
+    href = link.get("href", "")
+
     encontrado_codigo = PADRAO_CODIGO.search(href)
     if not encontrado_codigo:
-        return None
+        return None, False
     codigo = encontrado_codigo.group(1).upper()
 
-    texto = " ".join((texto_completo or "").split())
+    slug = _slug_do_href(href)
+    alias = slug.replace("-", " ").strip() if slug else ""
+    nome, tem_logo = _extrair_nome(link, codigo, slug)
+
+    texto = " ".join(link.get_text(" ", strip=True).split())
 
     em_promocao = bool(PADRAO_EM_PROMOCAO.match(texto))
-
-    encontrado_nome = PADRAO_NOME.search(texto)
-    nome = encontrado_nome.group(1).strip() if encontrado_nome else codigo
 
     blocos = re.split(r"\bclube\b", texto, flags=re.IGNORECASE)
     pontos_padrao, moeda_padrao = _parse_taxa_pontos(blocos[0])
@@ -115,9 +159,9 @@ def _extrair_parceiro(href, texto_completo):
     pontos_anteriores = float(encontrado_eram.group(1)) if encontrado_eram else 0.0
 
     if pontos_padrao is None:
-        return None
+        return None, False
 
-    return ParceiroLivelo(
+    parceiro = ParceiroLivelo(
         codigo=codigo,
         nome=nome,
         url=href,
@@ -126,33 +170,32 @@ def _extrair_parceiro(href, texto_completo):
         pontos_clube=round(pontos_clube, 4),
         em_promocao=em_promocao,
         pontos_anteriores=pontos_anteriores,
+        alias=alias,
     )
+    return parceiro, tem_logo
 
 
 def parsear_html_livelo(html):
     """
-    extrai a lista de parceiros a partir do html bruto da pagina de parceiros da livelo, sem depender do playwright nem de rede, util tanto para ajustar as expressoes regulares quanto para reprocessar uma coleta antiga sem consultar o site de novo, veja debug_scraper.py, opcao --reparsear.
-
-    deduplica pelo codigo do parceiro, mantendo a primeira ocorrencia encontrada, ja que a mesma pagina pode listar o mesmo parceiro mais de uma vez em situacoes raras de layout.
+    extrai a lista de parceiros a partir do html bruto da pagina de parceiros da livelo, sem depender do playwright nem de rede, util tanto para ajustar a extracao quanto para reprocessar uma coleta antiga sem consultar o site de novo, veja debug_scraper.py, opcao --reparsear.
+    
+    deduplica pelo codigo do parceiro. quando o mesmo codigo aparece mais de uma vez, o que acontece as vezes por causa do layout da pagina, prefere a copia cuja logo carregou, ja que e dela que vem o nome de verdade, usado depois no casamento com o buscape.
     """
     soup = BeautifulSoup(html, "html.parser")
 
-    parceiros_brutos = []
+    parceiros_por_codigo = {}
     for link in soup.select(SELETOR_LINK_PARCEIRO):
-        href = link.get("href", "")
-        texto = link.get_text(" ", strip=True)
-        parceiro = _extrair_parceiro(href, texto)
-        if parceiro:
-            parceiros_brutos.append(parceiro)
+        parceiro, tem_logo = _extrair_parceiro(link)
+        if not parceiro:
+            continue
 
-    vistos = set()
-    parceiros_unicos = []
-    for parceiro in parceiros_brutos:
-        if parceiro.codigo not in vistos:
-            vistos.add(parceiro.codigo)
-            parceiros_unicos.append(parceiro)
+        existente = parceiros_por_codigo.get(parceiro.codigo)
+        if existente is None:
+            parceiros_por_codigo[parceiro.codigo] = (parceiro, tem_logo)
+        elif tem_logo and not existente[1]:
+            parceiros_por_codigo[parceiro.codigo] = (parceiro, tem_logo)
 
-    return parceiros_unicos
+    return [parceiro for parceiro, _ in parceiros_por_codigo.values()]
 
 
 def _fechar_banner_cookies(pagina):
@@ -236,9 +279,9 @@ def _coletar_html_pagina_parceiros(timeout_ms, headless):
 def buscar_parceiros_livelo(timeout_ms=60000, headless=True, salvar_debug_em_falha=True):
     """
     abre a pagina publica de parceiros da livelo e devolve a lista completa de parceiros encontrados, combinando a coleta do html pelo playwright com a extracao pura em parsear_html_livelo.
-
+    
     o html da coleta e sempre salvo em ultimo_html_livelo.html, sucesso ou falha, e adicionalmente em debug_livelo.html quando nenhum parceiro for reconhecido, para facilitar achar esse caso depois.
-
+    
     levanta ErroScraperLivelo quando a pagina nao trouxer nenhum parceiro reconhecivel dentro do tempo limite, o chamador decide se mostra esse erro ao usuario.
     """
     html_pagina = _coletar_html_pagina_parceiros(timeout_ms, headless)
