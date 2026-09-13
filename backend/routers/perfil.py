@@ -1,5 +1,5 @@
 """
-rotas do perfil financeiro, rendimento mensal liquido, cotacao do dolar, valor do milheiro padrao e os cartoes de credito cadastrados.
+rotas do perfil financeiro, rendimento mensal liquido, cotacao do dolar, valor do milheiro padrao, bonus de transferencia padrao, numero de parcelas padrao e os cartoes de credito cadastrados. estes valores padrao sao usados pela pesquisa automatica em services/pesquisa_produto.py sempre que o buscape nao trouxer um numero de parcelas proprio da loja, para nenhum calculo depender de numero fixo no codigo.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -18,6 +18,7 @@ def obter_perfil():
 def salvar_perfil(payload: PerfilUpdate):
     db.salvar_configuracoes(
         payload.rendimento_mensal, payload.cotacao_dolar, payload.valor_milheiro_padrao,
+        payload.percentual_bonus_transferencia_padrao, payload.parcelas_padrao,
     )
     return db.obter_configuracoes()
 

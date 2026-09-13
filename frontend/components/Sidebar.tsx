@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const ITENS_NAV = [
   { href: "/", rotulo: "Perfil", descricao: "Rendimento, dólar e cartões" },
   { href: "/calculadora", rotulo: "Calculadora", descricao: "Pesquisa e ranking" },
+  { href: "/calculadora-livre", rotulo: "Calculadora livre", descricao: "Uso avulso, sem produto" },
   { href: "/wishlist", rotulo: "Wishlist", descricao: "Itens da reforma" },
   { href: "/historico", rotulo: "Histórico", descricao: "Evolução de preços" },
 ];
@@ -25,7 +26,9 @@ export function Sidebar() {
       <nav className="flex flex-col gap-1">
         {ITENS_NAV.map((item) => {
           const ativo =
-            item.href === "/" ? caminhoAtual === "/" : caminhoAtual.startsWith(item.href);
+            item.href === "/"
+              ? caminhoAtual === "/"
+              : caminhoAtual === item.href || caminhoAtual.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}

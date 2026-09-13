@@ -19,6 +19,8 @@ USER_ID_PADRAO = 1
 
 VALOR_MILHEIRO_PADRAO = 30.0
 PONTOS_DOLAR_CARTAO_PADRAO = 3.0
+BONUS_TRANSFERENCIA_PADRAO = 80.0
+PARCELAS_PADRAO = 6
 
 
 @contextmanager
@@ -65,7 +67,17 @@ def _migrar_colunas_novas(conn):
         conn, "user_settings", f"pontos_dolar_cartao_padrao REAL NOT NULL DEFAULT {PONTOS_DOLAR_CARTAO_PADRAO}",
     )
     _adicionar_coluna_se_nao_existir(
+        conn, "user_settings",
+        f"percentual_bonus_transferencia_padrao REAL NOT NULL DEFAULT {BONUS_TRANSFERENCIA_PADRAO}",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "user_settings", f"parcelas_padrao INTEGER NOT NULL DEFAULT {PARCELAS_PADRAO}",
+    )
+    _adicionar_coluna_se_nao_existir(
         conn, "ofertas", "pontos_por_dolar_cartao REAL NOT NULL DEFAULT 0",
+    )
+    _adicionar_coluna_se_nao_existir(
+        conn, "ofertas", "logo_url TEXT",
     )
     _adicionar_coluna_se_nao_existir(
         conn, "ofertas", "percentual_bonus_transferencia REAL NOT NULL DEFAULT 0",
@@ -196,19 +208,24 @@ def obter_configuracoes():
         return dict(linha)
 
 
-def salvar_configuracoes(rendimento_mensal, cotacao_dolar, valor_milheiro_padrao):
+def salvar_configuracoes(rendimento_mensal, cotacao_dolar, valor_milheiro_padrao,
+                          percentual_bonus_transferencia_padrao, parcelas_padrao):
     """
-    salva o perfil financeiro. o campo de pontos por dolar padrao do cartao nao entra mais aqui, porque cada cartao cadastrado ja tem sua propria taxa de pontos por dolar, um padrao global so duplicava essa informacao sem servir pra nada.
+    salva o perfil financeiro. o campo de pontos por dolar padrao do cartao nao entra mais aqui, porque cada cartao cadastrado ja tem sua propria taxa de pontos por dolar, um padrao global so duplicava essa informacao sem servir pra nada. percentual_bonus_transferencia_padrao e parcelas_padrao sao os valores usados pela pesquisa automatica quando o buscape nao confirma um parcelamento proprio da loja, ver services/pesquisa_produto.py.
     """
     with conexao() as conn:
         conn.execute(
             """
             UPDATE user_settings
             SET rendimento_mensal = ?, cotacao_dolar = ?, valor_milheiro_padrao = ?,
+                percentual_bonus_transferencia_padrao = ?, parcelas_padrao = ?,
                 atualizado_em = CURRENT_TIMESTAMP
             WHERE user_id = ?
             """,
-            (rendimento_mensal, cotacao_dolar, valor_milheiro_padrao, USER_ID_PADRAO),
+            (
+                rendimento_mensal, cotacao_dolar, valor_milheiro_padrao,
+                percentual_bonus_transferencia_padrao, parcelas_padrao, USER_ID_PADRAO,
+            ),
         )
 
 
@@ -311,53 +328,56 @@ def listar_ofertas_por_produto(produto_id):
         return [dict(linha) for linha in linhas]
 
 
-def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco, url_produto):
+def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url=""):
     cursor = conn.execute(
         """
         INSERT INTO ofertas (
             produto_id, user_id, loja, tipo, preco_pix, preco_cartao, parcelas,
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom,
-            observacoes, validade, confianca, preco_efetivo, preco, url_produto
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             produto_id, USER_ID_PADRAO, loja, tipo, preco_pix, preco_cartao, parcelas,
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom,
-            observacoes, validade, confianca, preco_efetivo, preco, url_produto,
+            observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url,
         ),
     )
     return cursor.lastrowid
 
 
-def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0, url_produto=""):
+def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0, url_produto="", logo_url=""):
     """
-    cadastra uma oferta a mao, tipicamente vinda do formulario manual da calculadora. devolve o id da linha criada, para o chamador poder linkar essa oferta a um registro de historico.
+    cadastra uma oferta a mao, tipicamente vinda do formulario manual da calculadora. devolve o id da linha criada, para o chamador poder linkar essa oferta a um registro de historico. logo_url fica vazia por padrao, ja que o formulario manual nao pesquisa nenhum parceiro Livelo, so a pesquisa automatica preenche esse campo.
     """
     with conexao() as conn:
         return _inserir_oferta(
             conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-            confianca, preco_efetivo, preco, url_produto,
+            confianca, preco_efetivo, preco, url_produto, logo_url,
         )
 
 
-def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto):
+def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto, logo_url=""):
     """
-    cadastra uma oferta encontrada pela pesquisa automatica no buscape, mesma tabela da oferta manual, so que sempre com preco e url_produto preenchidos. devolve o id da linha criada.
+    cadastra uma oferta encontrada pela pesquisa automatica no buscape, mesma tabela da oferta manual, so que sempre com preco e url_produto preenchidos. devolve o id da linha criada. logo_url vem do parceiro Livelo casado pela propria pesquisa, ver services/pesquisa_produto.py, e fica vazia quando nenhum parceiro casar.
     """
     with conexao() as conn:
         return _inserir_oferta(
             conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-            confianca, preco_efetivo, preco, url_produto,
+            confianca, preco_efetivo, preco, url_produto, logo_url,
         )
 
 
 def atualizar_oferta(oferta_id, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0):
+    """
+    atualiza uma oferta existente com os dados do formulario manual de edicao. logo_url nao entra nesta atualizacao de proposito, o formulario manual nao pesquisa parceiro nenhum, entao uma logo ja gravada por uma pesquisa automatica anterior continua valendo depois da edicao.
+    """
     with conexao() as conn:
         cursor = conn.execute(
             """

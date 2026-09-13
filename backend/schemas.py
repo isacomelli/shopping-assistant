@@ -17,12 +17,16 @@ class PerfilOut(BaseModel):
     rendimento_mensal: float
     cotacao_dolar: float
     valor_milheiro_padrao: float
+    percentual_bonus_transferencia_padrao: float
+    parcelas_padrao: int
 
 
 class PerfilUpdate(BaseModel):
     rendimento_mensal: float
     cotacao_dolar: float
     valor_milheiro_padrao: float
+    percentual_bonus_transferencia_padrao: float
+    parcelas_padrao: int
 
 
 class CotacaoDolarOut(BaseModel):
@@ -134,6 +138,7 @@ class OfertaOut(BaseModel):
     confianca: str
     preco_efetivo: Optional[float]
     url_produto: Optional[str]
+    logo_url: Optional[str] = None
     atualizada_em: Optional[str]
     criado_em: Optional[str]
     resultado: ResultadoCalculoOut
@@ -150,6 +155,15 @@ class ResultadoAutomaticoOut(BaseModel):
     parceiro_nome: Optional[str]
     confianca_pix_cartao: bool
     url_produto: str
+    logo_url: str = ""
+    resultado: ResultadoCalculoOut
+
+
+class CalculoLivreOut(BaseModel):
+    """
+    resultado da calculadora livre, a mesma logica de calculo de uma oferta, so que sem estar ligada a nenhum produto nem gravar nada no banco, util para simular qualquer compra do dia a dia.
+    """
+
     resultado: ResultadoCalculoOut
 
 

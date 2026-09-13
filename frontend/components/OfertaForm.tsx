@@ -2,43 +2,55 @@
 
 import { useState } from "react";
 
-import type { Cartao, OfertaPayload } from "@/lib/types";
+import type { Cartao, OfertaPayload, Perfil } from "@/lib/types";
 
 const TIPOS_OFERTA = ["online", "parceiro de pontos", "loja física", "negociação"];
 const NIVEIS_CONFIANCA = ["confirmada", "até domingo", "expirada"];
 
-const VAZIO: OfertaPayload = {
-  loja: "",
-  tipo: "online",
-  preco_pix: 0,
-  preco_cartao: 0,
-  parcelas: 6,
-  pontos_por_real: 0,
-  pontos_por_dolar_cartao: 0,
-  percentual_bonus_transferencia: 80,
-  valor_milheiro: 30,
-  cashback_pct: 0,
-  frete: 0,
-  cupom: 0,
-  observacoes: "",
-  validade: "",
-  confianca: "confirmada",
-};
+// usados apenas quando nenhum perfil e informado, o que nao deveria acontecer nas telas normais do app, ver montarValorVazio abaixo
+const VALOR_MILHEIRO_PADRAO_SEM_PERFIL = 30;
+const BONUS_TRANSFERENCIA_PADRAO_SEM_PERFIL = 80;
+const PARCELAS_PADRAO_SEM_PERFIL = 6;
+
+function montarValorVazio(perfil?: Perfil): OfertaPayload {
+  return {
+    loja: "",
+    tipo: "online",
+    preco_pix: 0,
+    preco_cartao: 0,
+    parcelas: perfil?.parcelas_padrao ?? PARCELAS_PADRAO_SEM_PERFIL,
+    pontos_por_real: 0,
+    pontos_por_dolar_cartao: 0,
+    percentual_bonus_transferencia:
+      perfil?.percentual_bonus_transferencia_padrao ?? BONUS_TRANSFERENCIA_PADRAO_SEM_PERFIL,
+    valor_milheiro: perfil?.valor_milheiro_padrao ?? VALOR_MILHEIRO_PADRAO_SEM_PERFIL,
+    cashback_pct: 0,
+    frete: 0,
+    cupom: 0,
+    observacoes: "",
+    validade: "",
+    confianca: "confirmada",
+  };
+}
 
 export function OfertaForm({
   valorInicial,
   cartoes,
+  perfil,
   aoSalvar,
   aoCancelar,
   rotuloBotao = "Calcular e salvar oferta",
+  exigirLoja = true,
 }: {
   valorInicial?: Partial<OfertaPayload>;
   cartoes: Cartao[];
+  perfil?: Perfil;
   aoSalvar: (payload: OfertaPayload) => Promise<void>;
   aoCancelar?: () => void;
   rotuloBotao?: string;
+  exigirLoja?: boolean;
 }) {
-  const [dados, setDados] = useState<OfertaPayload>({ ...VAZIO, ...valorInicial });
+  const [dados, setDados] = useState<OfertaPayload>({ ...montarValorVazio(perfil), ...valorInicial });
   const [cartaoSelecionado, setCartaoSelecionado] = useState("nenhum");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -58,8 +70,12 @@ export function OfertaForm({
   }
 
   async function enviar() {
-    if (!dados.loja.trim() || dados.preco_pix <= 0 || dados.preco_cartao <= 0) {
-      setErro("Preencha ao menos a loja, o preço no Pix e o preço no cartão.");
+    if ((exigirLoja && !dados.loja.trim()) || dados.preco_pix <= 0 || dados.preco_cartao <= 0) {
+      setErro(
+        exigirLoja
+          ? "Preencha ao menos a loja, o preço no Pix e o preço no cartão."
+          : "Preencha ao menos o preço no Pix e o preço no cartão.",
+      );
       return;
     }
     setErro(null);

@@ -4,7 +4,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from database import db
 from services import pesquisa_produto
 from services.pesquisa_produto import (
     montar_oferta_a_partir_do_buscape,
@@ -23,42 +22,30 @@ class OfertaBuscapeFalsa:
     url_produto: str = ""
 
 
+# lista fixa falsa, no mesmo formato de PARCEIROS_LIVELO_CONHECIDOS
+# em services/casamento_lojas.py, so pra nao depender da lista real
+# de producao, que muda conforme a livelo ajusta as taxas
 PARCEIROS_FALSOS = [
-    {"nome": "Amazon", "alias": "Amazon", "pontos_padrao": 10.0},
-    {"nome": "Fast Shop Oficial", "alias": "Fast Shop", "pontos_padrao": 6.0},
+    {"nome": "Amazon", "alias": "Amazon", "codigo": "AMZ", "pontos_padrao": 10.0},
+    {"nome": "Fast Shop Oficial", "alias": "Fast Shop", "codigo": "FST", "pontos_padrao": 6.0},
 ]
 
 
-def _parceiro_falso_por_nome(nome_loja):
-    """
-    reproduz a busca por substring feita por
-    db.buscar_parceiro_livelo_por_nome, sem depender do banco de
-    dados nem de arquivo em disco.
-    """
-    alvo = nome_loja.strip().lower()
-    for parceiro in PARCEIROS_FALSOS:
-        nome_p = parceiro["nome"].lower()
-        alias_p = parceiro["alias"].lower()
-        if nome_p == alvo or nome_p in alvo or alvo in nome_p or alvo in alias_p or alias_p in alvo:
-            return parceiro
-    return None
-
-
 def test_buscar_parceiro_para_loja_encontra_por_substring(monkeypatch):
-    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
     parceiro = pesquisa_produto.buscar_parceiro_para_loja("Fast Shop")
     assert parceiro is not None
     assert parceiro["nome"] == "Fast Shop Oficial"
 
 
 def test_buscar_parceiro_para_loja_nao_encontra_quando_nao_ha_parceiro(monkeypatch):
-    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
     parceiro = pesquisa_produto.buscar_parceiro_para_loja("Magalu")
     assert parceiro is None
 
 
 def test_montar_oferta_usa_pontos_do_parceiro_casado(monkeypatch):
-    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
     oferta_buscape = OfertaBuscapeFalsa(
         loja="Amazon", preco=1000, preco_pix=950, preco_cartao=1000, confianca_pix_cartao=True,
     )
@@ -74,7 +61,7 @@ def test_montar_oferta_usa_pontos_do_parceiro_casado(monkeypatch):
 
 
 def test_montar_oferta_zera_pontos_quando_parceiro_nao_encontrado(monkeypatch):
-    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
     oferta_buscape = OfertaBuscapeFalsa(loja="Magalu", preco=1000, preco_pix=1000, preco_cartao=1000)
     oferta, parceiro, _ = montar_oferta_a_partir_do_buscape(
         oferta_buscape, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
@@ -83,8 +70,56 @@ def test_montar_oferta_zera_pontos_quando_parceiro_nao_encontrado(monkeypatch):
     assert oferta.pontos_por_real == 0.0
 
 
+def test_montar_oferta_usa_logo_do_parceiro_casado(monkeypatch):
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
+    oferta_buscape = OfertaBuscapeFalsa(
+        loja="Amazon", preco=1000, preco_pix=950, preco_cartao=1000, confianca_pix_cartao=True,
+    )
+    oferta, _, _ = montar_oferta_a_partir_do_buscape(
+        oferta_buscape, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
+    )
+    assert oferta.logo_url == "https://partners-profile.livelo.com.br/amz/image.jpeg"
+
+
+def test_montar_oferta_sem_logo_quando_parceiro_nao_encontrado(monkeypatch):
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
+    oferta_buscape = OfertaBuscapeFalsa(loja="Magalu", preco=1000, preco_pix=1000, preco_cartao=1000)
+    oferta, _, _ = montar_oferta_a_partir_do_buscape(
+        oferta_buscape, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
+    )
+    assert oferta.logo_url == ""
+
+
+def test_montar_oferta_usa_parcelas_reais_do_buscape_quando_confirmadas(monkeypatch):
+    """
+    quando o buscape confirma um parcelamento de verdade, tipo 10x, esse numero real deve prevalecer sobre o padrao do perfil, ja que o preco_cartao da propria oferta ja foi calculado em cima dessas mesmas 10 parcelas, ver scrapers/buscape.py. usar um numero de parcelas diferente aqui deixaria o rotulo de pagamento e o rendimento do parcelamento incoerentes com o preco de verdade da loja.
+    """
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
+    oferta_buscape = OfertaBuscapeFalsa(
+        loja="Amazon", preco=1630.21, preco_pix=1499.79, preco_cartao=1630.21,
+        confianca_pix_cartao=True, parcelas=10,
+    )
+    oferta, _, _ = montar_oferta_a_partir_do_buscape(
+        oferta_buscape, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
+        parcelas_quando_nao_confirmado=6,
+    )
+    assert oferta.parcelas == 10
+
+
+def test_montar_oferta_usa_parcelas_do_perfil_quando_buscape_nao_confirma(monkeypatch):
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
+    oferta_buscape = OfertaBuscapeFalsa(
+        loja="Amazon", preco=1000, preco_pix=1000, preco_cartao=1000, confianca_pix_cartao=False,
+    )
+    oferta, _, _ = montar_oferta_a_partir_do_buscape(
+        oferta_buscape, cotacao_dolar=5.3, pontos_por_dolar_cartao_padrao=3.0,
+        parcelas_quando_nao_confirmado=12,
+    )
+    assert oferta.parcelas == 12
+
+
 def test_pesquisar_produto_automaticamente_ranqueia_do_mais_barato_para_o_mais_caro(monkeypatch):
-    monkeypatch.setattr(db, "buscar_parceiro_livelo_por_nome", _parceiro_falso_por_nome)
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
 
     def buscador_falso(nome_produto):
         return [

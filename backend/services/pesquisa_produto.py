@@ -9,26 +9,36 @@ primeiro, o buscape e consultado para descobrir o preco e a lista de
 lojas que vendem o produto, ver scrapers/buscape.py.
 
 segundo, para cada loja encontrada, o modulo tenta casar o nome da
-loja com um parceiro Livelo ou Esfera ja cadastrado, atraves de
-database.db.buscar_parceiro_livelo_por_nome, que delega o casamento
-em si para services/casamento_lojas.py, do jeito que
-buscar_parceiro_para_loja espera. a busca sempre passa pelo modulo
-database.db, e nao por uma lista carregada em memoria antecipadamente,
-para que o cadastro de parceiros possa mudar entre uma pesquisa e
-outra sem precisar reiniciar nada.
+loja com um parceiro Livelo conhecido, atraves de
+casamento_lojas.encontrar_parceiro_equivalente contra a lista fixa
+PARCEIROS_LIVELO_CONHECIDOS, cadastrada a mao em
+services/casamento_lojas.py. nao ha scraper, tabela no banco nem
+endpoint envolvido nesse casamento, so essa lista fixa, ja que a
+pagina publica de parceiros da livelo e bloqueada pelo akamai e nao
+da pra manter uma lista dinamica atualizada.
 
 quando uma loja encontrada no buscape nao bate com nenhum parceiro
-cadastrado, o resultado marca isso claramente, com pontos_por_real
+conhecido, o resultado marca isso claramente, com pontos_por_real
 zerado e parceiro_encontrado como False, para voce saber que precisa
-cadastrar esse parceiro ou editar a oferta manualmente depois.
+adicionar esse parceiro em PARCEIROS_LIVELO_CONHECIDOS ou editar a
+oferta manualmente depois.
+
+quando o parceiro casa, a logo exibida na tela tambem vem daqui, montada por casamento_lojas.obter_url_logo_parceiro a partir do codigo do proprio parceiro, em vez de qualquer logo do buscape.
+
+sobre o numero de parcelas, terceiro, o buscape ja informa quantas parcelas a loja anuncia, tipo "10x de R$ 165,70", em oferta_buscape.parcelas, e esse numero real e sempre priorizado quando confianca_pix_cartao vier True. o parametro parcelas_quando_nao_confirmado so entra quando o buscape nao reconheceu nenhum parcelamento, e vem do perfil financeiro, cadastrado em user_settings.parcelas_padrao, em vez de um numero fixo no codigo. o mesmo vale para valor_milheiro e percentual_bonus_transferencia, ambos lidos do perfil pelo chamador desta funcao e repassados aqui, nunca fixos no codigo.
 """
 
 from dataclasses import dataclass
 from typing import Optional
 
-from database import db
+from services.casamento_lojas import (
+    PARCEIROS_LIVELO_CONHECIDOS,
+    encontrar_parceiro_equivalente,
+    obter_url_logo_parceiro,
+)
 from engine.price_engine import Oferta, ResultadoOferta, calcular_oferta
 
+# valores usados apenas quando esta funcao e chamada diretamente sem informar o perfil, tipo nos testes. em producao, routers/ofertas.py sempre repassa os valores cadastrados em user_settings.
 VALOR_MILHEIRO_PADRAO_PESQUISA = 30.0
 BONUS_TRANSFERENCIA_PADRAO_PESQUISA = 80.0
 PARCELAS_PADRAO_PESQUISA = 6
@@ -48,28 +58,39 @@ class ResultadoAutomatico:
     parceiro_nome: Optional[str]
     confianca_pix_cartao: bool
     url_produto: str = ""
+    logo_url: str = ""
 
 
 def buscar_parceiro_para_loja(nome_loja):
     """
-    tenta encontrar, entre os parceiros ja cadastrados, aquele cujo
-    nome ou apelido mais se aproxima do nome da loja encontrada no
-    buscape.
+    tenta encontrar, entre os parceiros conhecidos em
+    PARCEIROS_LIVELO_CONHECIDOS, aquele cujo nome ou apelido mais se
+    aproxima do nome da loja encontrada no buscape.
 
-    a comparacao em si e feita por database.db.buscar_parceiro_livelo_por_nome,
-    que delega para services/casamento_lojas.py. nomes bem diferentes
-    do mesmo grupo, tipo "magazine luiza" contra o apelido "magalu",
-    casam mesmo sem alias cadastrado, atraves dos grupos de apelidos
-    conhecidos desse modulo, ver GRUPOS_DE_APELIDOS.
+    a comparacao em si e feita por
+    casamento_lojas.encontrar_parceiro_equivalente. nomes bem
+    diferentes do mesmo grupo, tipo "magazine luiza" contra o apelido
+    "magalu", casam mesmo sem alias exatamente igual, atraves dos
+    grupos de apelidos conhecidos desse modulo, ver GRUPOS_DE_APELIDOS
+    em services/casamento_lojas.py.
     """
-    return db.buscar_parceiro_livelo_por_nome(nome_loja)
+    return encontrar_parceiro_equivalente(nome_loja, PARCEIROS_LIVELO_CONHECIDOS)
+
+
+def _escolher_parcelas(oferta_buscape, parcelas_quando_nao_confirmado):
+    """
+    decide quantas parcelas usar no calculo desta oferta. quando o buscape confirmou um parcelamento de verdade no cartao de resultado, confianca_pix_cartao True, o numero real de parcelas anunciado pela loja, oferta_buscape.parcelas, e sempre priorizado, ja que ele tambem foi usado para compor o proprio preco_cartao, ver scrapers/buscape.py. so cai para parcelas_quando_nao_confirmado, vindo do perfil financeiro, quando o buscape nao reconheceu nenhum parcelamento.
+    """
+    if oferta_buscape.confianca_pix_cartao and oferta_buscape.parcelas > 1:
+        return oferta_buscape.parcelas
+    return parcelas_quando_nao_confirmado
 
 
 def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
                                        pontos_por_dolar_cartao_padrao,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
                                        percentual_bonus_transferencia=BONUS_TRANSFERENCIA_PADRAO_PESQUISA,
-                                       parcelas=PARCELAS_PADRAO_PESQUISA):
+                                       parcelas_quando_nao_confirmado=PARCELAS_PADRAO_PESQUISA):
     """
     monta uma Oferta pronta para calculo a partir de uma oferta
     encontrada no buscape, ja tentando casar com um parceiro
@@ -79,13 +100,14 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
     """
     parceiro = buscar_parceiro_para_loja(oferta_buscape.loja)
     pontos_por_real = float(parceiro["pontos_padrao"]) if parceiro else 0.0
+    logo_url = obter_url_logo_parceiro(parceiro) if parceiro else ""
 
     oferta = Oferta(
         loja=oferta_buscape.loja,
         preco=oferta_buscape.preco,
         preco_pix=oferta_buscape.preco_pix,
         preco_cartao=oferta_buscape.preco_cartao,
-        parcelas=parcelas,
+        parcelas=_escolher_parcelas(oferta_buscape, parcelas_quando_nao_confirmado),
         tipo="online",
         pontos_por_real=pontos_por_real,
         cotacao_dolar=cotacao_dolar,
@@ -93,6 +115,7 @@ def montar_oferta_a_partir_do_buscape(oferta_buscape, cotacao_dolar,
         percentual_bonus_transferencia=percentual_bonus_transferencia,
         valor_milheiro=valor_milheiro,
         url_produto=getattr(oferta_buscape, "url_produto", ""),
+        logo_url=logo_url,
     )
 
     return oferta, parceiro, oferta_buscape.confianca_pix_cartao
@@ -103,10 +126,16 @@ def pesquisar_produto_automaticamente(nome_produto, rendimento_mensal,
                                        buscar_ofertas_buscape=None,
                                        valor_milheiro=VALOR_MILHEIRO_PADRAO_PESQUISA,
                                        percentual_bonus_transferencia=BONUS_TRANSFERENCIA_PADRAO_PESQUISA,
-                                       parcelas=PARCELAS_PADRAO_PESQUISA):
+                                       parcelas_quando_nao_confirmado=PARCELAS_PADRAO_PESQUISA):
     """
     pesquisa um produto no buscape e devolve o ranking automatico de
     ofertas, ja calculado da mais barata para a mais cara.
+
+    valor_milheiro, percentual_bonus_transferencia e
+    parcelas_quando_nao_confirmado devem vir do perfil financeiro
+    cadastrado pelo usuario, quem chama esta funcao e responsavel por
+    ler user_settings e repassar aqui, os valores padrao deste modulo
+    servem so para chamadas diretas, tipo em teste.
 
     buscar_ofertas_buscape e injetavel para facilitar teste sem
     depender de rede real ou do playwright, por padrao usa
@@ -123,7 +152,7 @@ def pesquisar_produto_automaticamente(nome_produto, rendimento_mensal,
     for oferta_buscape in ofertas_buscape:
         oferta, parceiro, distincao_confiavel = montar_oferta_a_partir_do_buscape(
             oferta_buscape, cotacao_dolar, pontos_por_dolar_cartao_padrao,
-            valor_milheiro, percentual_bonus_transferencia, parcelas,
+            valor_milheiro, percentual_bonus_transferencia, parcelas_quando_nao_confirmado,
         )
         resultado = calcular_oferta(oferta, rendimento_mensal)
         resultados.append(
@@ -134,6 +163,7 @@ def pesquisar_produto_automaticamente(nome_produto, rendimento_mensal,
                 parceiro_nome=parceiro["nome"] if parceiro else None,
                 confianca_pix_cartao=distincao_confiavel,
                 url_produto=getattr(oferta_buscape, "url_produto", ""),
+                logo_url=oferta.logo_url,
             )
         )
 

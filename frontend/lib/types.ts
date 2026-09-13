@@ -2,6 +2,8 @@ export interface Perfil {
   rendimento_mensal: number;
   cotacao_dolar: number;
   valor_milheiro_padrao: number;
+  percentual_bonus_transferencia_padrao: number;
+  parcelas_padrao: number;
 }
 
 export interface Cartao {
@@ -56,6 +58,7 @@ export interface Oferta {
   confianca: string;
   preco_efetivo: number | null;
   url_produto: string | null;
+  logo_url: string | null;
   atualizada_em: string | null;
   criado_em: string | null;
   resultado: ResultadoCalculo;
@@ -90,6 +93,7 @@ export interface ResultadoAutomatico {
   parceiro_nome: string | null;
   confianca_pix_cartao: boolean;
   url_produto: string;
+  logo_url: string;
   resultado: ResultadoCalculo;
 }
 
@@ -111,4 +115,8 @@ export interface ParceiroLivelo {
   nome: string;
   alias: string;
   pontos_padrao: number;
+}
+
+export interface CalculoLivre {
+  resultado: ResultadoCalculo;
 }

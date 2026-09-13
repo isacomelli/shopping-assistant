@@ -33,6 +33,7 @@ def oferta_da_linha(linha_oferta, config):
         frete=linha_oferta["frete"],
         cupom=linha_oferta["cupom"],
         url_produto=linha_oferta["url_produto"] or "",
+        logo_url=linha_oferta["logo_url"] or "",
     )
 
 

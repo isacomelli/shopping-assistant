@@ -38,6 +38,9 @@ class Oferta:
     # link do produto na loja de origem, quando a oferta veio de uma pesquisa automatica, vazio para ofertas cadastradas a mao
     url_produto: str = ""
 
+    # logo do parceiro Livelo casado, quando houver, montada em services/pesquisa_produto.py atraves de casamento_lojas.obter_url_logo_parceiro. fica vazia quando a loja nao casar com nenhum parceiro conhecido ou quando a oferta for cadastrada a mao, caso em que quem exibe a oferta cai de volta para outra fonte de logo
+    logo_url: str = ""
+
     # site parceiro, tipo livelo ou esfera
     pontos_por_real: float = 0.0
 

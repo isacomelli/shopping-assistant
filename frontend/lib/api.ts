@@ -1,5 +1,6 @@
 import type {
   Cartao,
+  CalculoLivre,
   HistoricoItem,
   Oferta,
   OfertaPayload,
@@ -120,6 +121,13 @@ export const api = {
     requisitar<void>(`/produtos/${produtoId}/historico/${registroId}`, { method: "DELETE" }),
   obterOfertaDoHistorico: (produtoId: number, registroId: number) =>
     requisitar<Oferta>(`/produtos/${produtoId}/historico/${registroId}/oferta`),
+
+  // calculadora livre, sem produto e sem gravar nada no banco
+  calcularLivre: (payload: OfertaPayload) =>
+    requisitar<CalculoLivre>("/calculadora/calcular", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };
 
 export { ErroApi };

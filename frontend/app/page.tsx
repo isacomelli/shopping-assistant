@@ -1,210 +1,197 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Card } from "@/components/Card";
+import { OfertaForm } from "@/components/OfertaForm";
+import { RankingCard } from "@/components/RankingCard";
 import { api } from "@/lib/api";
 import { formatarMoeda } from "@/lib/format";
-import type { Cartao, Perfil } from "@/lib/types";
+import type { Cartao, Oferta, Perfil, Produto } from "@/lib/types";
 
-export default function PaginaPerfil() {
-  const [perfil, setPerfil] = useState<Perfil | null>(null);
+export default function PaginaCalculadora() {
+  return (
+    <Suspense fallback={<p className="text-sm text-ink-500">Carregando.</p>}>
+      <ConteudoCalculadora />
+    </Suspense>
+  );
+}
+
+function ConteudoCalculadora() {
+  const searchParams = useSearchParams();
+  const produtoIdNaUrl = searchParams.get("produtoId");
+  const ofertaIdParaEditar = searchParams.get("ofertaId");
+
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [produtoId, setProdutoId] = useState<number | null>(
+    produtoIdNaUrl ? Number(produtoIdNaUrl) : null,
+  );
+  const [ofertas, setOfertas] = useState<Oferta[]>([]);
+  const [carregandoOfertas, setCarregandoOfertas] = useState(false);
+  const [pesquisando, setPesquisando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
-
-  const [novoCartaoNome, setNovoCartaoNome] = useState("");
-  const [novoCartaoPontos, setNovoCartaoPontos] = useState(0);
-  const [novoCartaoCashback, setNovoCartaoCashback] = useState(0);
-
-  async function carregarTudo() {
-    const [perfilAtual, cartoesAtuais] = await Promise.all([
-      api.obterPerfil(),
-      api.listarCartoes(),
-    ]);
-    setPerfil(perfilAtual);
-    setCartoes(cartoesAtuais);
-    setCarregando(false);
-  }
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    carregarTudo();
+    Promise.all([api.listarProdutos(), api.listarCartoes(), api.obterPerfil()]).then(
+      ([listaProdutos, listaCartoes, perfilAtual]) => {
+        setProdutos(listaProdutos);
+        setCartoes(listaCartoes);
+        setPerfil(perfilAtual);
+        if (produtoId === null && listaProdutos.length > 0) {
+          setProdutoId(listaProdutos[0].id);
+        }
+      },
+    );
   }, []);
 
-  useEffect(() => {
-    api.obterCotacaoDolar().then((resultado) => {
-      if (resultado.encontrada && resultado.cotacao_dolar) {
-        setPerfil((atual) => (atual ? { ...atual, cotacao_dolar: resultado.cotacao_dolar! } : atual));
-      }
-    });
-  }, []);
-
-  async function salvarPerfil() {
-    if (!perfil) return;
-    setSalvando(true);
-    setMensagem(null);
+  async function carregarOfertas(id: number) {
+    setCarregandoOfertas(true);
     try {
-      const atualizado = await api.salvarPerfil(perfil);
-      setPerfil(atualizado);
-      setMensagem("Perfil salvo com sucesso.");
+      const lista = await api.listarOfertas(id);
+      setOfertas(lista);
     } finally {
-      setSalvando(false);
+      setCarregandoOfertas(false);
     }
   }
 
-  async function adicionarCartao() {
-    if (!novoCartaoNome.trim()) return;
-    const lista = await api.adicionarCartao({
-      nome: novoCartaoNome.trim(),
-      pontos_por_dolar: novoCartaoPontos,
-      cashback_pct: novoCartaoCashback,
-    });
-    setCartoes(lista);
-    setNovoCartaoNome("");
-    setNovoCartaoPontos(0);
-    setNovoCartaoCashback(0);
+  useEffect(() => {
+    if (produtoId !== null) {
+      carregarOfertas(produtoId);
+    }
+  }, [produtoId]);
+
+  const produtoAtual = useMemo(
+    () => produtos.find((produto) => produto.id === produtoId) ?? null,
+    [produtos, produtoId],
+  );
+
+  const ranking = useMemo(() => {
+    if (!produtoAtual?.preco_alvo) return ofertas;
+    return ofertas.filter((oferta) => oferta.resultado.preco_efetivo <= produtoAtual.preco_alvo!);
+  }, [ofertas, produtoAtual]);
+
+  async function pesquisarAutomaticamente() {
+    if (produtoId === null) return;
+    setPesquisando(true);
+    setErro(null);
+    setMensagem(null);
+    try {
+      const resultados = await api.pesquisarAutomaticamente(produtoId);
+      await carregarOfertas(produtoId);
+      setMensagem(`${resultados.length} oferta(s) atualizada(s) no ranking.`);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível consultar o Buscapé agora.");
+    } finally {
+      setPesquisando(false);
+    }
   }
 
-  async function removerCartao(cartaoId: number) {
-    const lista = await api.removerCartao(cartaoId);
-    setCartoes(lista);
+  async function salvarNovaOferta(payload: Parameters<typeof api.criarOferta>[1]) {
+    if (produtoId === null) return;
+    await api.criarOferta(produtoId, payload);
+    await carregarOfertas(produtoId);
   }
 
-  if (carregando || !perfil) {
-    return <p className="text-sm text-ink-500">Carregando perfil.</p>;
+  async function salvarEdicao(ofertaId: number, payload: Parameters<typeof api.atualizarOferta>[2]) {
+    if (produtoId === null) return;
+    await api.atualizarOferta(produtoId, ofertaId, payload);
+    await carregarOfertas(produtoId);
+  }
+
+  async function excluirOferta(ofertaId: number) {
+    if (produtoId === null) return;
+    await api.excluirOferta(produtoId, ofertaId);
+    await carregarOfertas(produtoId);
+  }
+
+  if (produtos.length === 0) {
+    return (
+      <Card title="Calculadora de compra inteligente">
+        <p className="text-sm text-ink-500">
+          Nenhum produto cadastrado. Crie um produto na Wishlist antes de pesquisar preços.
+        </p>
+      </Card>
+    );
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink-900">
-          Assistente de Compras da Reforma
+          Calculadora de Compra Inteligente
         </h1>
         <p className="mt-1 text-sm text-ink-500">
-          Perfil financeiro usado em todos os cálculos de custo efetivo.
+          Ranking de ofertas pelo custo efetivo, considerando Pix, cartão, pontos e cashback.
         </p>
       </div>
 
-      <Card
-        title="Perfil financeiro"
-        subtitle="Rendimento mensal líquido, cotação do dólar e valor padrão do milheiro."
-      >
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="field-label">Rendimento mensal líquido (%)</label>
-            <input
-              type="number"
-              step="0.01"
+      <Card>
+        <div className="flex items-end justify-between gap-4">
+          <div className="flex-1">
+            <label className="field-label">Produto</label>
+            <select
               className="field-input"
-              value={perfil.rendimento_mensal}
-              onChange={(e) => setPerfil({ ...perfil, rendimento_mensal: Number(e.target.value) })}
-            />
-          </div>
-          <div>
-            <label className="field-label">Cotação do dólar (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              className="field-input"
-              value={perfil.cotacao_dolar}
-              onChange={(e) => setPerfil({ ...perfil, cotacao_dolar: Number(e.target.value) })}
-            />
-          </div>
-          <div>
-            <label className="field-label">Valor padrão do milheiro (R$)</label>
-            <input
-              type="number"
-              step="1"
-              className="field-input"
-              value={perfil.valor_milheiro_padrao}
-              onChange={(e) =>
-                setPerfil({ ...perfil, valor_milheiro_padrao: Number(e.target.value) })
-              }
-            />
-          </div>
-        </div>
-
-        <div className="mt-5 flex items-center gap-3">
-          <button className="btn-primary" onClick={salvarPerfil} disabled={salvando}>
-            {salvando ? "Salvando." : "Salvar perfil"}
-          </button>
-          {mensagem && <span className="text-sm text-brand-700">{mensagem}</span>}
-        </div>
-      </Card>
-
-      <Card
-        title="Cartões cadastrados"
-        subtitle="Usados para sugerir pontos por dólar e cashback ao cadastrar uma oferta."
-      >
-        {cartoes.length === 0 ? (
-          <p className="text-sm text-ink-500">Nenhum cartão cadastrado ainda.</p>
-        ) : (
-          <table className="mb-5 w-full text-left text-sm">
-            <thead>
-              <tr className="text-xs uppercase tracking-wide text-ink-500">
-                <th className="pb-2 font-medium">Cartão</th>
-                <th className="pb-2 font-medium">Pontos por dólar</th>
-                <th className="pb-2 font-medium">Cashback</th>
-                <th className="pb-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {cartoes.map((cartao) => (
-                <tr key={cartao.id} className="border-t border-ink-300/20">
-                  <td className="py-2.5">{cartao.nome}</td>
-                  <td className="py-2.5">{cartao.pontos_por_dolar.toFixed(1)}</td>
-                  <td className="py-2.5">{cartao.cashback_pct.toFixed(1)}%</td>
-                  <td className="py-2.5 text-right">
-                    <button
-                      className="btn-ghost-danger"
-                      onClick={() => removerCartao(cartao.id)}
-                    >
-                      Remover
-                    </button>
-                  </td>
-                </tr>
+              value={produtoId ?? ""}
+              onChange={(e) => setProdutoId(Number(e.target.value))}
+            >
+              {produtos.map((produto) => (
+                <option key={produto.id} value={produto.id}>
+                  {produto.nome}
+                </option>
               ))}
-            </tbody>
-          </table>
+            </select>
+          </div>
+          <button className="btn-primary" onClick={pesquisarAutomaticamente} disabled={pesquisando}>
+            {pesquisando ? "Consultando o Buscapé." : "Atualizar ofertas automaticamente"}
+          </button>
+        </div>
+
+        {produtoAtual && (
+          <p className="mt-3 text-sm text-ink-500">
+            Categoria: {produtoAtual.categoria || "sem categoria"} · Preço alvo:{" "}
+            {formatarMoeda(produtoAtual.preco_alvo)} · Orçamento: {formatarMoeda(produtoAtual.orcamento)}
+          </p>
         )}
 
-        <div className="grid grid-cols-4 items-end gap-3 border-t border-ink-300/20 pt-4">
-          <div className="col-span-2">
-            <label className="field-label">Nome do cartão</label>
-            <input
-              className="field-input"
-              value={novoCartaoNome}
-              onChange={(e) => setNovoCartaoNome(e.target.value)}
-              placeholder="XP Visa Infinite"
+        {mensagem && <p className="mt-3 text-sm text-brand-700">{mensagem}</p>}
+        {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
+      </Card>
+
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">
+          Ranking de ofertas
+        </h2>
+        {carregandoOfertas ? (
+          <p className="text-sm text-ink-500">Carregando ofertas.</p>
+        ) : ranking.length === 0 ? (
+          <p className="text-sm text-ink-500">
+            Nenhuma oferta cadastrada ainda para este produto.
+          </p>
+        ) : (
+          ranking.map((oferta, indice) => (
+            <RankingCard
+              key={oferta.id}
+              oferta={oferta}
+              posicao={indice}
+              cartoes={cartoes}
+              perfil={perfil ?? undefined}
+              aoSalvarEdicao={(payload) => salvarEdicao(oferta.id, payload)}
+              aoExcluir={() => excluirOferta(oferta.id)}
+              abrirEditando={ofertaIdParaEditar !== null && Number(ofertaIdParaEditar) === oferta.id}
             />
-          </div>
-          <div>
-            <label className="field-label">Pontos por dólar</label>
-            <input
-              type="number"
-              step="0.5"
-              className="field-input"
-              value={novoCartaoPontos}
-              onChange={(e) => setNovoCartaoPontos(Number(e.target.value))}
-            />
-          </div>
-          <div>
-            <label className="field-label">Cashback (%)</label>
-            <input
-              type="number"
-              step="0.5"
-              className="field-input"
-              value={novoCartaoCashback}
-              onChange={(e) => setNovoCartaoCashback(Number(e.target.value))}
-            />
-          </div>
-          <div className="col-span-4">
-            <button className="btn-secondary" onClick={adicionarCartao}>
-              Adicionar cartão
-            </button>
-          </div>
-        </div>
+          ))
+        )}
+      </div>
+
+      <Card
+        title="Adicionar oferta manualmente"
+        subtitle="Útil para preços de loja física, negociações ou promoções que o Buscapé não encontra."
+      >
+        <OfertaForm cartoes={cartoes} perfil={perfil ?? undefined} aoSalvar={salvarNovaOferta} />
       </Card>
     </div>
   );

@@ -156,6 +156,8 @@ def pesquisar_automaticamente(produto_id: int):
             cotacao_dolar=float(config["cotacao_dolar"]),
             pontos_por_dolar_cartao_padrao=float(config["pontos_dolar_cartao_padrao"]),
             valor_milheiro=float(config["valor_milheiro_padrao"]),
+            percentual_bonus_transferencia=float(config["percentual_bonus_transferencia_padrao"]),
+            parcelas_quando_nao_confirmado=int(config["parcelas_padrao"]),
         )
     except ErroScraperBuscape as erro:
         raise HTTPException(
@@ -186,6 +188,7 @@ def pesquisar_automaticamente(produto_id: int):
             confianca="confirmada",
             preco_efetivo=resultado.preco_efetivo,
             url_produto=item.url_produto,
+            logo_url=item.logo_url,
         )
         db.registrar_historico(
             produto_id, oferta.loja, oferta.preco_cartao, resultado.preco_efetivo,
@@ -204,6 +207,7 @@ def pesquisar_automaticamente(produto_id: int):
             "parceiro_nome": item.parceiro_nome,
             "confianca_pix_cartao": item.confianca_pix_cartao,
             "url_produto": item.url_produto,
+            "logo_url": item.logo_url,
             "resultado": resultado_como_dict(resultado),
         })
 

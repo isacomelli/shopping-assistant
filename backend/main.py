@@ -12,7 +12,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import db
-from routers import historico, ofertas, perfil, produtos
+from routers import calculadora, historico, ofertas, perfil, produtos
 
 ORIGENS_PERMITIDAS = os.environ.get(
     "CORS_ORIGENS", "http://localhost:3001",
@@ -49,3 +49,4 @@ app.include_router(perfil.router)
 app.include_router(produtos.router)
 app.include_router(ofertas.router)
 app.include_router(historico.router)
+app.include_router(calculadora.router)

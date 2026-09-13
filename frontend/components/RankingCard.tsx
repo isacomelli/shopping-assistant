@@ -3,8 +3,9 @@
 import { useState } from "react";
 
 import { OfertaForm } from "@/components/OfertaForm";
+import { ResultadoDetalhado } from "@/components/ResultadoDetalhado";
 import { formatarData, formatarMoeda, obterLogoDaLoja } from "@/lib/format";
-import type { Cartao, Oferta, OfertaPayload } from "@/lib/types";
+import type { Cartao, Oferta, OfertaPayload, Perfil } from "@/lib/types";
 
 const MEDALHAS = ["1º lugar", "2º lugar", "3º lugar"];
 
@@ -12,6 +13,7 @@ export function RankingCard({
   oferta,
   posicao,
   cartoes,
+  perfil,
   aoSalvarEdicao,
   aoExcluir,
   abrirEditando = false,
@@ -19,6 +21,7 @@ export function RankingCard({
   oferta: Oferta;
   posicao: number;
   cartoes: Cartao[];
+  perfil?: Perfil;
   aoSalvarEdicao: (payload: OfertaPayload) => Promise<void>;
   aoExcluir: () => Promise<void>;
   abrirEditando?: boolean;
@@ -27,7 +30,8 @@ export function RankingCard({
   const [editando, setEditando] = useState(abrirEditando);
 
   const rotulo = MEDALHAS[posicao] ?? `${posicao + 1}º lugar`;
-  const logoLoja = obterLogoDaLoja(oferta.url_produto);
+  // a logo do parceiro Livelo casado tem prioridade, ja que vem direto da livelo, ver services/casamento_lojas.py. quando a oferta nao tiver parceiro casado, tipicamente ofertas cadastradas a mao ou lojas fora da livelo, cai de volta para o favicon do dominio do produto
+  const logoLoja = oferta.logo_url || obterLogoDaLoja(oferta.url_produto);
 
   return (
     <div className="rounded-xl2 border border-ink-300/30 bg-surface shadow-card">
@@ -95,6 +99,7 @@ export function RankingCard({
           {editando ? (
             <OfertaForm
               cartoes={cartoes}
+              perfil={perfil}
               rotuloBotao="Salvar edição"
               valorInicial={{
                 loja: oferta.loja,
@@ -120,46 +125,15 @@ export function RankingCard({
               aoCancelar={() => setEditando(false)}
             />
           ) : (
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="rounded-lg bg-canvas p-4">
-                <p className="mb-2 font-medium text-ink-900">Pix</p>
-                <Linha rotulo="Preço" valor={formatarMoeda(oferta.preco_pix)} />
-                <Linha rotulo="Valor dos pontos" valor={formatarMoeda(oferta.resultado.valor_pontos_pix)} />
-                <Linha rotulo="Cashback" valor={formatarMoeda(oferta.resultado.cashback_valor_pix)} />
-                <Linha
-                  rotulo="Preço efetivo"
-                  valor={formatarMoeda(oferta.resultado.preco_efetivo_pix)}
-                  destaque
-                />
-              </div>
-              <div className="rounded-lg bg-canvas p-4">
-                <p className="mb-2 font-medium text-ink-900">Cartão {oferta.parcelas}x</p>
-                <Linha rotulo="Preço" valor={formatarMoeda(oferta.preco_cartao)} />
-                <Linha
-                  rotulo="Rendimento do parcelamento"
-                  valor={formatarMoeda(oferta.resultado.rendimento_parcelamento)}
-                />
-                <Linha rotulo="Valor dos pontos" valor={formatarMoeda(oferta.resultado.valor_pontos_cartao)} />
-                <Linha rotulo="Cashback" valor={formatarMoeda(oferta.resultado.cashback_valor_cartao)} />
-                <Linha
-                  rotulo="Preço efetivo"
-                  valor={formatarMoeda(oferta.resultado.preco_efetivo_cartao)}
-                  destaque
-                />
-              </div>
-            </div>
+            <ResultadoDetalhado
+              precoPix={oferta.preco_pix}
+              precoCartao={oferta.preco_cartao}
+              parcelas={oferta.parcelas}
+              resultado={oferta.resultado}
+            />
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function Linha({ rotulo, valor, destaque }: { rotulo: string; valor: string; destaque?: boolean }) {
-  return (
-    <div className="flex justify-between py-0.5">
-      <span className="text-ink-500">{rotulo}</span>
-      <span className={destaque ? "font-semibold text-ink-900" : "text-ink-700"}>{valor}</span>
     </div>
   );
 }

@@ -3,7 +3,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.casamento_lojas import encontrar_parceiro_equivalente, nomes_equivalentes
+from services.casamento_lojas import (
+    PARCEIROS_LIVELO_CONHECIDOS,
+    encontrar_parceiro_equivalente,
+    nomes_equivalentes,
+)
 
 
 def test_casa_por_grupo_de_apelidos_conhecido():
@@ -59,3 +63,16 @@ def test_encontrar_parceiro_equivalente_usa_grupo_de_apelidos_sem_alias_cadastra
 def test_encontrar_parceiro_equivalente_devolve_none_quando_nao_ha_casamento():
     parceiros = [{"nome": "Amazon", "alias": "", "pontos_padrao": 10.0}]
     assert encontrar_parceiro_equivalente("Casas Bahia", parceiros) is None
+
+
+def test_lista_real_de_parceiros_conhecidos_casa_magazine_luiza_com_magalu():
+    """
+    reproduz o bug em que ofertas da Magazine Luiza apareciam com
+    "Valor dos pontos, R$ 0,00" mesmo a Magalu sendo parceira ativa da
+    Livelo, a lista PARCEIROS_LIVELO_CONHECIDOS precisa casar o nome
+    comercial usado pelo buscape com o parceiro cadastrado.
+    """
+    parceiro = encontrar_parceiro_equivalente("Magazine Luiza", PARCEIROS_LIVELO_CONHECIDOS)
+    assert parceiro is not None
+    assert parceiro["nome"] == "Magalu"
+    assert parceiro["pontos_padrao"] == 4.0
