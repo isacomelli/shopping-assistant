@@ -15,7 +15,7 @@ from database import db
 from routers import calculadora, historico, ofertas, perfil, produtos
 
 ORIGENS_PERMITIDAS = os.environ.get(
-    "CORS_ORIGENS", "http://localhost:3001",
+    "CORS_ORIGENS", "http://localhost:3000",
 ).split(",")
 
 app = FastAPI(

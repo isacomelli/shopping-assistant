@@ -8,7 +8,7 @@ import { OfertaForm } from "@/components/OfertaForm";
 import { RankingCard } from "@/components/RankingCard";
 import { api } from "@/lib/api";
 import { formatarMoeda } from "@/lib/format";
-import type { Cartao, Oferta, Produto } from "@/lib/types";
+import type { Cartao, Oferta, Perfil, Produto } from "@/lib/types";
 
 export default function PaginaCalculadora() {
   return (
@@ -25,6 +25,7 @@ function ConteudoCalculadora() {
 
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [produtoId, setProdutoId] = useState<number | null>(
     produtoIdNaUrl ? Number(produtoIdNaUrl) : null,
   );
@@ -35,10 +36,11 @@ function ConteudoCalculadora() {
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.listarProdutos(), api.listarCartoes()]).then(
-      ([listaProdutos, listaCartoes]) => {
+    Promise.all([api.listarProdutos(), api.listarCartoes(), api.obterPerfil()]).then(
+      ([listaProdutos, listaCartoes, perfilAtual]) => {
         setProdutos(listaProdutos);
         setCartoes(listaCartoes);
+        setPerfil(perfilAtual);
         if (produtoId === null && listaProdutos.length > 0) {
           setProdutoId(listaProdutos[0].id);
         }
@@ -176,6 +178,7 @@ function ConteudoCalculadora() {
               oferta={oferta}
               posicao={indice}
               cartoes={cartoes}
+              perfil={perfil ?? undefined}
               aoSalvarEdicao={(payload) => salvarEdicao(oferta.id, payload)}
               aoExcluir={() => excluirOferta(oferta.id)}
               abrirEditando={ofertaIdParaEditar !== null && Number(ofertaIdParaEditar) === oferta.id}
@@ -188,7 +191,7 @@ function ConteudoCalculadora() {
         title="Adicionar oferta manualmente"
         subtitle="Útil para preços de loja física, negociações ou promoções que o Buscapé não encontra."
       >
-        <OfertaForm cartoes={cartoes} aoSalvar={salvarNovaOferta} />
+        <OfertaForm cartoes={cartoes} perfil={perfil ?? undefined} aoSalvar={salvarNovaOferta} />
       </Card>
     </div>
   );

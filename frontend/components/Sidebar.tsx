@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ITENS_NAV = [
-  { href: "/", rotulo: "Perfil", descricao: "Rendimento, dólar e cartões" },
+  { href: "/perfil", rotulo: "Perfil", descricao: "Rendimento, dólar e cartões" },
   { href: "/calculadora", rotulo: "Calculadora", descricao: "Pesquisa e ranking" },
   { href: "/calculadora-livre", rotulo: "Calculadora livre", descricao: "Uso avulso, sem produto" },
   { href: "/wishlist", rotulo: "Wishlist", descricao: "Itens da reforma" },

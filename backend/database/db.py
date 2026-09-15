@@ -143,12 +143,44 @@ def inicializar_banco():
                 alias TEXT NOT NULL DEFAULT '',
                 pontos_padrao REAL NOT NULL DEFAULT 0,
                 atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP,
-                alias TEXT NOT NULL DEFAULT '',
                 logo_url TEXT NOT NULL DEFAULT '', 
                 UNIQUE(user_id, nome)
             );
             """
         )
+
+        # migracoes de colunas adicionadas depois da criacao inicial das tabelas. CREATE TABLE IF NOT EXISTS acima nao altera uma tabela que ja existe, entao um banco shopping.db criado antes dessas colunas existirem no schema fica sem elas para sempre, mesmo depois do deploy trazer a nova versao do codigo, e e exatamente isso que causava o ResponseValidationError em obter_perfil quando as colunas percentual_bonus_transferencia_padrao e parcelas_padrao ainda nao tinham sido adicionadas na tabela real.
+        _renomear_coluna_se_necessario(conn, "user_settings", "cdi_mensal", "rendimento_mensal")
+        _adicionar_coluna_se_nao_existir(
+            conn, "user_settings", f"valor_milheiro_padrao REAL NOT NULL DEFAULT {VALOR_MILHEIRO_PADRAO}"
+        )
+        _adicionar_coluna_se_nao_existir(
+            conn, "user_settings", f"pontos_dolar_cartao_padrao REAL NOT NULL DEFAULT {PONTOS_DOLAR_CARTAO_PADRAO}"
+        )
+        _adicionar_coluna_se_nao_existir(
+            conn,
+            "user_settings",
+            f"percentual_bonus_transferencia_padrao REAL NOT NULL DEFAULT {BONUS_TRANSFERENCIA_PADRAO}",
+        )
+        _adicionar_coluna_se_nao_existir(
+            conn, "user_settings", f"parcelas_padrao INTEGER NOT NULL DEFAULT {PARCELAS_PADRAO}"
+        )
+
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "pontos_por_dolar_cartao REAL NOT NULL DEFAULT 0")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "logo_url TEXT")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "percentual_bonus_transferencia REAL NOT NULL DEFAULT 0")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "valor_milheiro REAL NOT NULL DEFAULT 0")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "preco REAL NOT NULL DEFAULT 0")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "url_produto TEXT")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "atualizada_em TEXT")
+
+        _adicionar_coluna_se_nao_existir(conn, "historico_precos", "preco REAL")
+        _adicionar_coluna_se_nao_existir(conn, "historico_precos", "preco_pix REAL")
+        _adicionar_coluna_se_nao_existir(conn, "historico_precos", "preco_cartao REAL")
+        _adicionar_coluna_se_nao_existir(conn, "historico_precos", "parcelas INTEGER")
+        _adicionar_coluna_se_nao_existir(conn, "historico_precos", "oferta_id INTEGER")
+
+        _adicionar_coluna_se_nao_existir(conn, "livelo_parceiros", "logo_url TEXT NOT NULL DEFAULT ''")
 
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
