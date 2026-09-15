@@ -7,6 +7,7 @@ from services.casamento_lojas import (
     PARCEIROS_LIVELO_CONHECIDOS,
     encontrar_parceiro_equivalente,
     nomes_equivalentes,
+    obter_url_logo_parceiro,
 )
 
 
@@ -76,3 +77,29 @@ def test_lista_real_de_parceiros_conhecidos_casa_magazine_luiza_com_magalu():
     assert parceiro is not None
     assert parceiro["nome"] == "Magalu"
     assert parceiro["pontos_padrao"] == 4.0
+
+
+def test_obter_url_logo_parceiro_prefere_logo_url_real_do_parceiro():
+    """
+    quando o parceiro ja tem uma logo_url real coletada, seja de PARCEIROS_LIVELO_CONHECIDOS,
+    seja de um parceiro atualizado no banco por scrapers/livelo.py, essa url deve ganhar do
+    padrao adivinhado a partir do codigo, que nao serve para parceiros fora do dominio
+    partners-profile.livelo.com.br ou com uma extensao de arquivo diferente de .jpeg.
+    """
+    parceiro = {"codigo": "DCR", "logo_url": "https://www.livelo.com.br/file/general/config_DCR_x.png"}
+    assert obter_url_logo_parceiro(parceiro) == "https://www.livelo.com.br/file/general/config_DCR_x.png"
+
+
+def test_obter_url_logo_parceiro_cai_para_padrao_por_codigo_sem_logo_url():
+    parceiro = {"codigo": "MZL"}
+    assert obter_url_logo_parceiro(parceiro) == "https://partners-profile.livelo.com.br/mzl/image.jpeg"
+
+
+def test_lista_real_de_parceiros_conhecidos_ja_vem_com_logo_url_preenchida():
+    """
+    todo parceiro do snapshot fixo foi regerado a partir da coleta manual mais recente,
+    em scrapers/ultimo_html_livelo.html, entao nenhum deveria depender do padrao adivinhado
+    por codigo.
+    """
+    sem_logo_url = [p for p in PARCEIROS_LIVELO_CONHECIDOS if not p.get("logo_url")]
+    assert sem_logo_url == []

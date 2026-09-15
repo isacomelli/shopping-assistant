@@ -66,6 +66,8 @@ class ParceiroLivelo:
     pontos_anteriores: float
     # apelido derivado do slug da propria url, tipo "magalu" em .../parceiros/magalu/MZL, usado como candidato extra no casamento de nomes em services/casamento_lojas.py, mesmo quando o nome principal vier certo
     alias: str = ""
+    # url real da logo do parceiro, lida direto do atributo src da propria tag img do card, ver _extrair_logo_url. cada parceiro usa um dominio e uma extensao de arquivo proprios, tipo .jpeg, .png, .webp, ou ate um dominio totalmente diferente para parceiros mais antigos, entao nao da pra adivinhar essa url a partir so do codigo, ver o comentario antigo em services/casamento_lojas.py sobre esse erro
+    logo_url: str = ""
 
 
 class ErroScraperLivelo(Exception):
@@ -128,9 +130,19 @@ def _extrair_nome(link, codigo, slug):
     return codigo, False
 
 
+def _extrair_logo_url(link):
+    """
+    le a url real da logo do parceiro direto do atributo src da tag img do card, em vez de adivinhar essa url a partir do codigo do parceiro. cada parceiro usa um dominio e uma extensao de arquivo proprios, tipo .jpeg, .png, .webp, e alguns parceiros mais antigos nem ficam no dominio partners-profile.livelo.com.br, entao so a leitura direta do src garante a logo certa. devolve string vazia quando o card nao tiver nenhuma img.
+    """
+    img = link.find("img")
+    if not img:
+        return ""
+    return (img.get("src") or "").strip()
+
+
 def _extrair_parceiro(link):
     """
-    monta um ParceiroLivelo a partir de um link de parceiro ja localizado pelo beautifulsoup, lendo o codigo e o apelido da propria url, o nome do atributo alt da logo, e o restante dos dados do texto visivel do card.
+    monta um ParceiroLivelo a partir de um link de parceiro ja localizado pelo beautifulsoup, lendo o codigo e o apelido da propria url, o nome e a logo do proprio card, e o restante dos dados do texto visivel do card.
     """
     href = link.get("href", "")
 
@@ -142,6 +154,7 @@ def _extrair_parceiro(link):
     slug = _slug_do_href(href)
     alias = slug.replace("-", " ").strip() if slug else ""
     nome, tem_logo = _extrair_nome(link, codigo, slug)
+    logo_url = _extrair_logo_url(link)
 
     texto = " ".join(link.get_text(" ", strip=True).split())
 
@@ -171,6 +184,7 @@ def _extrair_parceiro(link):
         em_promocao=em_promocao,
         pontos_anteriores=pontos_anteriores,
         alias=alias,
+        logo_url=logo_url,
     )
     return parceiro, tem_logo
 

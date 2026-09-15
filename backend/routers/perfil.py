@@ -17,8 +17,7 @@ def obter_perfil():
 @router.put("", response_model=PerfilOut)
 def salvar_perfil(payload: PerfilUpdate):
     db.salvar_configuracoes(
-        payload.rendimento_mensal, payload.cotacao_dolar, payload.valor_milheiro_padrao,
-        payload.percentual_bonus_transferencia_padrao, payload.parcelas_padrao,
+        payload.rendimento_mensal, payload.cotacao_dolar, payload.valor_milheiro_padrao, payload.percentual_bonus_transferencia_padrao, payload.parcelas_padrao,
     )
     return db.obter_configuracoes()
 

@@ -3,9 +3,7 @@ rotas da wishlist, os produtos que faltam comprar para o apartamento.
 """
 
 from fastapi import APIRouter, HTTPException
-
 from database import db
-
 from calculo import linha_oferta_para_saida
 from schemas import ProdutoCreate, ProdutoOut, ProdutoStatusUpdate, ProdutoUpdate
 

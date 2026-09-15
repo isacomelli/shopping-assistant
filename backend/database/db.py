@@ -3,8 +3,6 @@ camada de acesso ao banco sqlite do assistente de compras.
 
 todas as tabelas ja possuem a coluna user_id, mesmo que hoje so exista um unico usuario local, justamente para facilitar uma eventual migracao para um servico multiusuario na nuvem no futuro.
 
-sobre migracao de esquema, como o banco ja existe no disco de quem ja usava o app antes, nao da pra so mudar o CREATE TABLE, ele so roda na primeira vez. por isso, colunas novas sao adicionadas com ALTER TABLE dentro de _migrar_colunas_novas, ignorando o erro quando a coluna ja existe.
-
 sobre a tabela livelo_parceiros, o cadastro e manual, feito uma vez por parceiro, com o nome exatamente como ele costuma aparecer nos resultados do buscape, mais um alias opcional para apelidos do mesmo grupo, tipo "magalu" para "magazine luiza". a pesquisa automatica em services/pesquisa_produto.py usa buscar_parceiro_livelo_por_nome para casar cada loja encontrada com esse cadastro. o casamento em si, que reconhece tanto substring simples quanto apelidos de mercado conhecidos, tipo "magalu" para "magazine luiza", mora em services/casamento_lojas.py, ver esse modulo para os detalhes.
 """
 
@@ -58,72 +56,20 @@ def _renomear_coluna_se_necessario(conn, tabela, coluna_antiga, coluna_nova):
             raise
 
 
-def _migrar_colunas_novas(conn):
-    _renomear_coluna_se_necessario(conn, "user_settings", "cdi_mensal", "rendimento_mensal")
-    _adicionar_coluna_se_nao_existir(
-        conn, "user_settings", f"valor_milheiro_padrao REAL NOT NULL DEFAULT {VALOR_MILHEIRO_PADRAO}",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "user_settings", f"pontos_dolar_cartao_padrao REAL NOT NULL DEFAULT {PONTOS_DOLAR_CARTAO_PADRAO}",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "user_settings",
-        f"percentual_bonus_transferencia_padrao REAL NOT NULL DEFAULT {BONUS_TRANSFERENCIA_PADRAO}",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "user_settings", f"parcelas_padrao INTEGER NOT NULL DEFAULT {PARCELAS_PADRAO}",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "ofertas", "pontos_por_dolar_cartao REAL NOT NULL DEFAULT 0",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "ofertas", "logo_url TEXT",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "ofertas", "percentual_bonus_transferencia REAL NOT NULL DEFAULT 0",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "ofertas", "valor_milheiro REAL NOT NULL DEFAULT 0",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "ofertas", "preco REAL NOT NULL DEFAULT 0",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "ofertas", "url_produto TEXT",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "ofertas", "atualizada_em TEXT",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "historico_precos", "preco REAL",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "historico_precos", "preco_pix REAL",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "historico_precos", "preco_cartao REAL",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "historico_precos", "parcelas INTEGER",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "historico_precos", "oferta_id INTEGER",
-    )
-    _adicionar_coluna_se_nao_existir(
-        conn, "livelo_parceiros", "alias TEXT NOT NULL DEFAULT ''",
-    )
-
-
 def inicializar_banco():
     with conexao() as conn:
         conn.executescript(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS user_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL DEFAULT 1,
                 rendimento_mensal REAL NOT NULL DEFAULT 1.1,
                 cotacao_dolar REAL NOT NULL DEFAULT 5.4,
                 atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                valor_milheiro_padrao REAL NOT NULL DEFAULT {VALOR_MILHEIRO_PADRAO},
+                pontos_dolar_cartao_padrao REAL NOT NULL DEFAULT {PONTOS_DOLAR_CARTAO_PADRAO},
+                percentual_bonus_transferencia_padrao REAL NOT NULL DEFAULT {BONUS_TRANSFERENCIA_PADRAO},
+                parcelas_padrao INTEGER NOT NULL DEFAULT {PARCELAS_PADRAO},
                 UNIQUE(user_id)
             );
 
@@ -165,6 +111,13 @@ def inicializar_banco():
                 confianca TEXT NOT NULL DEFAULT 'confirmada',
                 preco_efetivo REAL,
                 criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                pontos_por_dolar_cartao REAL NOT NULL DEFAULT 0,
+                logo_url TEXT,
+                percentual_bonus_transferencia REAL NOT NULL DEFAULT 0,
+                valor_milheiro REAL NOT NULL DEFAULT 0,
+                preco REAL NOT NULL DEFAULT 0,
+                url_produto TEXT,
+                atualizada_em TEXT,
                 FOREIGN KEY (produto_id) REFERENCES produtos(id)
             );
 
@@ -175,6 +128,11 @@ def inicializar_banco():
                 preco_anunciado REAL,
                 preco_efetivo REAL,
                 registrado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                preco REAL,
+                preco_pix REAL,
+                preco_cartao REAL,
+                parcelas INTEGER,
+                oferta_id INTEGER,
                 FOREIGN KEY (produto_id) REFERENCES produtos(id)
             );
 
@@ -185,12 +143,12 @@ def inicializar_banco():
                 alias TEXT NOT NULL DEFAULT '',
                 pontos_padrao REAL NOT NULL DEFAULT 0,
                 atualizado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+                alias TEXT NOT NULL DEFAULT '',
+                logo_url TEXT NOT NULL DEFAULT '', 
                 UNIQUE(user_id, nome)
             );
             """
         )
-
-        _migrar_colunas_novas(conn)
 
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
@@ -328,7 +286,7 @@ def listar_ofertas_por_produto(produto_id):
         return [dict(linha) for linha in linhas]
 
 
-def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url=""):
+def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url):
     cursor = conn.execute(
         """
         INSERT INTO ofertas (
@@ -361,7 +319,7 @@ def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, 
         )
 
 
-def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto, logo_url=""):
+def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto, logo_url):
     """
     cadastra uma oferta encontrada pela pesquisa automatica no buscape, mesma tabela da oferta manual, so que sempre com preco e url_produto preenchidos. devolve o id da linha criada. logo_url vem do parceiro Livelo casado pela propria pesquisa, ver services/pesquisa_produto.py, e fica vazia quando nenhum parceiro casar.
     """
@@ -492,38 +450,41 @@ def listar_parceiros_livelo():
         return [dict(linha) for linha in linhas]
 
 
-def adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias=""):
+def adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias="", logo_url=""):
     """
-    cadastra ou atualiza, pelo nome, um parceiro Livelo ou Esfera com a taxa de pontos por real informada a mao.
+    cadastra ou atualiza, pelo nome, um parceiro Livelo ou Esfera com a taxa de pontos por real informada a mao. logo_url e a url real da logo do parceiro, lida direto do html da livelo por scrapers/livelo.py, ver o comentario la sobre por que nao da pra adivinhar essa url a partir so do codigo do parceiro.
     """
     with conexao() as conn:
         conn.execute(
             """
-            INSERT INTO livelo_parceiros (user_id, nome, alias, pontos_padrao, atualizado_em)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO livelo_parceiros (user_id, nome, alias, pontos_padrao, logo_url, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id, nome) DO UPDATE SET
                 alias = excluded.alias,
                 pontos_padrao = excluded.pontos_padrao,
+                logo_url = excluded.logo_url,
                 atualizado_em = CURRENT_TIMESTAMP
             """,
-            (USER_ID_PADRAO, nome.strip(), alias.strip(), pontos_padrao),
+            (USER_ID_PADRAO, nome.strip(), alias.strip(), pontos_padrao, (logo_url or "").strip()),
         )
 
 
 def salvar_parceiros_livelo(parceiros):
     """
-    cadastra ou atualiza varios parceiros de uma vez, aceitando tanto dicts quanto objetos com atributos nome, alias e pontos_padrao.
+    cadastra ou atualiza varios parceiros de uma vez, aceitando tanto dicts quanto objetos com atributos nome, alias, pontos_padrao e logo_url.
     """
     for parceiro in parceiros:
         if isinstance(parceiro, dict):
             nome = parceiro["nome"]
             alias = parceiro.get("alias", "")
             pontos_padrao = parceiro["pontos_padrao"]
+            logo_url = parceiro.get("logo_url", "")
         else:
             nome = parceiro.nome
             alias = getattr(parceiro, "alias", "")
             pontos_padrao = parceiro.pontos_padrao
-        adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias)
+            logo_url = getattr(parceiro, "logo_url", "")
+        adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias, logo_url)
 
 
 def remover_parceiro_livelo(parceiro_id):

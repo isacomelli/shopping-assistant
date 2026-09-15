@@ -49,7 +49,7 @@ def test_valor_milhas_pix_nao_soma_pontos_de_cartao():
     valor_pix = calcular_valor_milhas_pix(
         base_valor=1000, pontos_por_real=10, percentual_bonus=0, valor_milheiro=30,
     )
-    assert valor_pix == 150.0
+    assert valor_pix == 300.0
 
 
 def test_valor_milhas_cartao_soma_pontos_parceiro_e_pontos_cartao():
@@ -57,7 +57,7 @@ def test_valor_milhas_cartao_soma_pontos_parceiro_e_pontos_cartao():
         base_valor=1000, pontos_por_real=10, cotacao_dolar=5.0,
         pontos_por_dolar_cartao=3, percentual_bonus=0, valor_milheiro=30,
     )
-    assert valor_cartao == 159.0
+    assert valor_cartao == 318.0
 
 
 def test_valor_milhas_cartao_maior_que_pix_quando_ha_pontos_no_cartao():

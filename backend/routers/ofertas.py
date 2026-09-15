@@ -7,6 +7,7 @@ from database import db
 from engine.price_engine import calcular_oferta, simular_parcelamento
 from scrapers.buscape import ErroScraperBuscape
 from scrapers.livelo import ErroScraperLivelo, buscar_parceiros_livelo
+from services.casamento_lojas import PARCEIROS_LIVELO_CONHECIDOS
 from services.pesquisa_produto import pesquisar_produto_automaticamente
 from calculo import linha_oferta_para_saida, oferta_do_payload, resultado_como_dict
 from schemas import (
@@ -27,6 +28,16 @@ def _produto_ou_404(produto_id):
     if not produto:
         raise HTTPException(status_code=404, detail="Produto não encontrado.")
     return produto
+
+
+def _parceiros_para_pesquisa_automatica():
+    """
+    monta a lista de parceiros Livelo usada para casar cada loja encontrada na pesquisa automatica, priorizando os parceiros ja atualizados na tabela livelo_parceiros do banco, atraves do botao "atualizar parceiros da livelo", e caindo para o snapshot fixo de PARCEIROS_LIVELO_CONHECIDOS por baixo, para os parceiros que a tabela ainda nao tiver.
+
+    como encontrar_parceiro_equivalente devolve o primeiro parceiro que bater, colocar os parceiros do banco primeiro nesta lista garante que uma taxa de pontos ou uma logo atualizada substitua a versao antiga do snapshot fixo, sem precisar remover a entrada antiga do codigo.
+    """
+    parceiros_atualizados = db.listar_parceiros_livelo()
+    return parceiros_atualizados + PARCEIROS_LIVELO_CONHECIDOS
 
 
 @router.get("/produtos/{produto_id}/ofertas", response_model=list[OfertaOut])
@@ -158,6 +169,7 @@ def pesquisar_automaticamente(produto_id: int):
             valor_milheiro=float(config["valor_milheiro_padrao"]),
             percentual_bonus_transferencia=float(config["percentual_bonus_transferencia_padrao"]),
             parcelas_quando_nao_confirmado=int(config["parcelas_padrao"]),
+            parceiros_conhecidos=_parceiros_para_pesquisa_automatica(),
         )
     except ErroScraperBuscape as erro:
         raise HTTPException(

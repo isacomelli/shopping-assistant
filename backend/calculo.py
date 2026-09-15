@@ -1,21 +1,16 @@
 """
 funcoes de apoio que ligam as linhas do banco ao motor de calculo.
 
-fica tudo num lugar so para as rotas em backend/ nao precisarem
-remontar o dataclass Oferta toda vez, do jeito que a pagina da
-calculadora do streamlit fazia antes.
+fica tudo num lugar so para as rotas em backend/ nao precisarem remontar o dataclass Oferta toda vez, do jeito que a pagina da calculadora do streamlit fazia antes.
 """
 
 from dataclasses import asdict
-
 from engine.price_engine import Oferta, calcular_oferta
 
 
 def oferta_da_linha(linha_oferta, config):
     """
-    monta um Oferta do motor de calculo a partir de uma linha salva
-    no banco, usando a cotacao do dolar e o valor do milheiro
-    cadastrados no perfil.
+    monta um Oferta do motor de calculo a partir de uma linha salva no banco, usando a cotacao do dolar e o valor do milheiro cadastrados no perfil.
     """
     return Oferta(
         loja=linha_oferta["loja"],
@@ -77,8 +72,7 @@ def resultado_como_dict(resultado):
 
 def linha_oferta_para_saida(linha_oferta, config):
     """
-    junta os dados salvos de uma oferta com o resultado do calculo
-    feito na hora, pronto para servir na rota de listagem.
+    junta os dados salvos de uma oferta com o resultado do calculo feito na hora, pronto para servir na rota de listagem.
     """
     oferta = oferta_da_linha(linha_oferta, config)
     resultado = calcular_oferta(oferta, float(config["rendimento_mensal"]))

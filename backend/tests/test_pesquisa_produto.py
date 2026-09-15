@@ -146,3 +146,25 @@ def test_pesquisar_produto_automaticamente_ranqueia_do_mais_barato_para_o_mais_c
     resultado_magalu = next(r for r in resultados if r.oferta.loja == "Magalu")
     assert resultado_magalu.parceiro_encontrado is False
     assert resultado_magalu.oferta.pontos_por_real == 0.0
+
+
+def test_buscar_parceiro_para_loja_prioriza_parceiros_conhecidos_informado(monkeypatch):
+    """
+    quando parceiros_conhecidos e informado, tipicamente vindo da tabela livelo_parceiros
+    do banco ja atualizada pelo botao "atualizar parceiros da livelo", ele deve ganhar de
+    PARCEIROS_LIVELO_CONHECIDOS, mesmo que o mesmo nome exista nos dois, ver
+    routers/ofertas.py _parceiros_para_pesquisa_automatica.
+    """
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
+    parceiros_do_banco = [
+        {"nome": "Amazon", "alias": "amazon", "pontos_padrao": 25.0, "logo_url": "https://exemplo.com/amazon.png"},
+    ]
+    parceiro = pesquisa_produto.buscar_parceiro_para_loja("Amazon", parceiros_do_banco)
+    assert parceiro["pontos_padrao"] == 25.0
+    assert parceiro["logo_url"] == "https://exemplo.com/amazon.png"
+
+
+def test_buscar_parceiro_para_loja_sem_parceiros_conhecidos_cai_para_lista_fixa(monkeypatch):
+    monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
+    parceiro = pesquisa_produto.buscar_parceiro_para_loja("Amazon")
+    assert parceiro["pontos_padrao"] == 10.0
