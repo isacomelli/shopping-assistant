@@ -1,7 +1,7 @@
 """
-, modulo de normalizacao, deduplicacao e filtro de qualidade dos resultados de busca de produtos, usado tanto pelo google shopping quanto pelo buscape antes de qualquer oferta chegar ao motor de calculo.
+modulo de normalizacao, deduplicacao e filtro de qualidade dos resultados de busca de produtos, usado tanto pelo google shopping quanto pelo buscape antes de qualquer oferta chegar ao motor de calculo.
 
-, este modulo nao sabe nada sobre livelo, meliuz ou preco efetivo, ele so decide duas coisas, qual e o nome canonico de cada loja, e se um resultado encontrado e realmente o produto pesquisado ou apenas um acessorio, peca de reposicao ou anuncio sem preco, que deveria ser descartado antes de entrar no ranking.
+este modulo nao sabe nada sobre livelo, meliuz ou preco efetivo, ele so decide duas coisas, qual e o nome canonico de cada loja, e se um resultado encontrado e realmente o produto pesquisado ou apenas um acessorio, peca de reposicao ou anuncio sem preco, que deveria ser descartado antes de entrar no ranking.
 """
 
 import re
@@ -109,7 +109,7 @@ def _chave_normalizada(texto):
 
 def padronizar_nome_loja(nome_loja):
     """
-    , devolve o nome canonico de uma loja a partir de mapa_normalizacao_lojas, quando a loja nao estiver cadastrada no mapa, devolve o proprio nome recebido, ja com espacos duplicados removidos, para nao quebrar lojas novas que ainda nao entraram na lista
+    devolve o nome canonico de uma loja a partir de mapa_normalizacao_lojas, quando a loja nao estiver cadastrada no mapa, devolve o proprio nome recebido, ja com espacos duplicados removidos, para nao quebrar lojas novas que ainda nao entraram na lista
     """
     if not nome_loja:
         return nome_loja
@@ -121,7 +121,7 @@ def padronizar_nome_loja(nome_loja):
 
 def _tokens_relevantes(texto):
     """
-    , devolve o conjunto de palavras com mais de dois caracteres do texto informado, ja normalizadas, usado para medir sobreposicao entre o termo pesquisado e o nome de um resultado
+    devolve o conjunto de palavras com mais de dois caracteres do texto informado, ja normalizadas, usado para medir sobreposicao entre o termo pesquisado e o nome de um resultado
     """
     chave = _chave_normalizada(texto)
     return {palavra for palavra in chave.split() if len(palavra) > 2}
@@ -129,7 +129,7 @@ def _tokens_relevantes(texto):
 
 def resultado_parece_produto_principal(nome_produto_encontrado, termo_pesquisado, sobreposicao_minima=0.34):
     """
-    , decide se um resultado encontrado provavelmente e o produto principal pesquisado, e nao um acessorio ou peca de reposicao, combinando dois criterios, a ausencia de termos de TERMOS_RESULTADO_SECUNDARIO no nome do resultado, e uma sobreposicao minima de palavras entre o termo pesquisado e o nome encontrado
+    decide se um resultado encontrado provavelmente e o produto principal pesquisado, e nao um acessorio ou peca de reposicao, combinando dois criterios, a ausencia de termos de TERMOS_RESULTADO_SECUNDARIO no nome do resultado, e uma sobreposicao minima de palavras entre o termo pesquisado e o nome encontrado
     """
     chave_resultado = _chave_normalizada(nome_produto_encontrado)
     if not chave_resultado:
@@ -150,7 +150,7 @@ def resultado_parece_produto_principal(nome_produto_encontrado, termo_pesquisado
 
 def _chave_deduplicacao(oferta):
     """
-    , monta a chave de deduplicacao de uma oferta, priorizando a url do produto, quando disponivel, e caindo para loja padronizada mais preco quando a url nao existir
+    monta a chave de deduplicacao de uma oferta, priorizando a url do produto, quando disponivel, e caindo para loja padronizada mais preco quando a url nao existir
     """
     url_produto = getattr(oferta, "url_produto", "") or ""
     if url_produto:
@@ -162,7 +162,7 @@ def _chave_deduplicacao(oferta):
 
 def normalizar_e_filtrar_ofertas(ofertas, termo_pesquisado):
     """
-    , aplica, nesta ordem, a padronizacao do nome da loja de cada oferta, o filtro de resultados secundarios com base no nome do produto encontrado, e a deduplicacao por url ou por loja mais preco, devolvendo a lista final pronta para seguir para o enriquecimento com livelo e meliuz
+    aplica, nesta ordem, a padronizacao do nome da loja de cada oferta, o filtro de resultados secundarios com base no nome do produto encontrado, e a deduplicacao por url ou por loja mais preco, devolvendo a lista final pronta para seguir para o enriquecimento com livelo e meliuz
     """
     ofertas_filtradas = []
     for oferta in ofertas:

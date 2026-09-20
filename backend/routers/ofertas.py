@@ -1,7 +1,7 @@
 """
-, rotas de ofertas de um produto, cadastro manual, edicao, exclusao, pesquisa automatica e simulador de parcelamento.
+rotas de ofertas de um produto, cadastro manual, edicao, exclusao, pesquisa automatica e simulador de parcelamento.
 
-, a pesquisa automatica usa o google shopping como fonte principal, com o buscape como fonte complementar, ver services/pesquisa_produto.py, e reaproveita um cache local em sqlite, ver database/db.py, obter_cache_pesquisa e salvar_cache_pesquisa, para evitar bater nas fontes de busca de novo quando o mesmo termo for pesquisado dentro de um intervalo curto, o parametro atualizar da rota de pesquisa ignora o cache e forca uma consulta nova
+a pesquisa automatica usa o google shopping como fonte principal, com o buscape como fonte complementar, ver services/pesquisa_produto.py, e reaproveita um cache local em sqlite, ver database/db.py, obter_cache_pesquisa e salvar_cache_pesquisa, para evitar bater nas fontes de busca de novo quando o mesmo termo for pesquisado dentro de um intervalo curto, o parametro atualizar da rota de pesquisa ignora o cache e forca uma consulta nova
 """
 
 from fastapi import APIRouter, HTTPException
@@ -22,6 +22,8 @@ from schemas import (
 )
 
 router = APIRouter(tags=["ofertas"])
+
+TAMANHO_MAXIMO_DETALHE_ERRO = 300
 
 
 def _produto_ou_404(produto_id):
@@ -62,8 +64,9 @@ def _resultado_automatico_para_dict(item, resultado):
 
 def _executar_pesquisa_e_gravar(produto, config):
     """
-    dispara a pesquisa automatica de verdade, google shopping mais buscape complementar, e registra cada loja encontrada como oferta e como historico de preco, devolvendo a lista ja em formato de dicionario, pronta tanto para a resposta da rota quanto para salvar no cache
+    dispara a pesquisa automatica de verdade, google shopping mais buscape complementar, e registra cada loja encontrada como oferta e como historico de preco, devolve a tupla com a lista ja em formato de dicionario, pronta tanto para a resposta da rota quanto para salvar no cache, e o dicionario com o erro de cada fonte que falhou
     """
+    erros_por_fonte = {}
     resultados_automaticos = pesquisar_produto_automaticamente(
         nome_produto=produto["nome"],
         rendimento_mensal=float(config["rendimento_mensal"]),
@@ -74,6 +77,7 @@ def _executar_pesquisa_e_gravar(produto, config):
         percentual_bonus_transferencia=float(config["percentual_bonus_transferencia_padrao"]),
         parcelas_quando_nao_confirmado=int(config["parcelas_padrao"]),
         parceiros_conhecidos=_parceiros_para_pesquisa_automatica(),
+        erros_por_fonte=erros_por_fonte,
     )
 
     saida = []
@@ -113,7 +117,7 @@ def _executar_pesquisa_e_gravar(produto, config):
         saida.append(_resultado_automatico_para_dict(item, resultado))
 
     saida.sort(key=lambda item: item["resultado"]["preco_efetivo"])
-    return saida
+    return saida, erros_por_fonte
 
 
 @router.get("/produtos/{produto_id}/ofertas", response_model=list[OfertaOut])
@@ -243,14 +247,20 @@ def pesquisar_automaticamente(produto_id: int, atualizar: bool = False):
             return {"resultados": cache["ofertas"], "veio_do_cache": True, "fontes_com_erro": {}}
 
     try:
-        saida = _executar_pesquisa_e_gravar(produto, config)
+        saida, erros_por_fonte = _executar_pesquisa_e_gravar(produto, config)
     except ErroScraperGoogleShopping as erro:
         raise HTTPException(
             status_code=502, detail=f"Não foi possível consultar as fontes de busca agora, {erro}",
         )
 
-    db.salvar_cache_pesquisa(produto["nome"], saida, origem="combinado")
-    return {"resultados": saida, "veio_do_cache": False, "fontes_com_erro": {}}
+    # sem o Google Shopping o resultado é parcial, então não vale guardar no cache
+    if "google_shopping" not in erros_por_fonte:
+        db.salvar_cache_pesquisa(produto["nome"], saida, origem="combinado")
+
+    erros_resumidos = {
+        fonte: detalhe[:TAMANHO_MAXIMO_DETALHE_ERRO] for fonte, detalhe in erros_por_fonte.items()
+    }
+    return {"resultados": saida, "veio_do_cache": False, "fontes_com_erro": erros_resumidos}
 
 
 @router.post("/simular-parcelamento", response_model=list[ParcelaSimuladaOut])

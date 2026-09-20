@@ -6,9 +6,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - shopping-db:/app/database
+      - shopping-db:/app/data
     environment:
       CORS_ORIGENS: "http://localhost:3000"
+      CAMINHO_BANCO: "/app/data/shopping.db"
+      SERPER_API_KEY: "${SERPER_API_KEY:-}"
     restart: unless-stopped
 
   web:

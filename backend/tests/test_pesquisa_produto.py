@@ -27,9 +27,7 @@ class OfertaEncontradaFalsa:
     nome_produto: str = ""
 
 
-# lista fixa falsa, no mesmo formato de PARCEIROS_LIVELO_CONHECIDOS
-# em services/casamento_lojas.py, so pra nao depender da lista real
-# de producao, que muda conforme a livelo ajusta as taxas
+# lista fixa falsa, no mesmo formato de PARCEIROS_LIVELO_CONHECIDOS em services/casamento_lojas.py, so pra nao depender da lista real de producao, que muda conforme a livelo ajusta as taxas
 PARCEIROS_FALSOS = [
     {"nome": "Amazon", "alias": "Amazon", "codigo": "AMZ", "pontos_padrao": 10.0},
     {"nome": "Fast Shop Oficial", "alias": "Fast Shop", "codigo": "FST", "pontos_padrao": 6.0},
@@ -38,14 +36,14 @@ PARCEIROS_FALSOS = [
 
 def google_vazio(_termo):
     """
-    , stub usado nos testes que nao querem exercitar a fonte google shopping, simula a fonte respondendo sem nenhuma oferta encontrada, sem depender de rede nem de playwright
+    stub usado nos testes que nao querem exercitar a fonte google shopping, simula a fonte respondendo sem nenhuma oferta encontrada, sem depender de rede nem de playwright
     """
     return []
 
 
 def google_indisponivel(_termo):
     """
-    , stub usado para simular o google shopping bloqueado ou fora do ar, para testar a queda para o buscape complementar
+    stub usado para simular o google shopping bloqueado ou fora do ar, para testar a queda para o buscape complementar
     """
     raise ErroScraperGoogleShopping("captcha exigido pelo google")
 
@@ -91,7 +89,7 @@ def test_montar_oferta_zera_pontos_do_parceiro_quando_parceiro_nao_encontrado(mo
 
 def test_montar_oferta_mantem_pontos_do_cartao_mesmo_sem_parceiro(monkeypatch):
     """
-    , os pontos do cartao de credito existem sempre que o pagamento e feito no cartao, independentemente da loja ter parceria com a livelo, so os pontos do site parceiro, pontos_por_real, dependem do casamento
+    os pontos do cartao de credito existem sempre que o pagamento e feito no cartao, independentemente da loja ter parceria com a livelo, so os pontos do site parceiro, pontos_por_real, dependem do casamento
     """
     monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
     oferta_encontrada = OfertaEncontradaFalsa(loja="Loja Sem Parceria", preco=1000, preco_pix=1000, preco_cartao=1000)
@@ -125,7 +123,7 @@ def test_montar_oferta_sem_logo_quando_parceiro_nao_encontrado(monkeypatch):
 
 def test_montar_oferta_usa_parcelas_reais_da_fonte_quando_confirmadas(monkeypatch):
     """
-    , quando a fonte confirma um parcelamento de verdade, tipo 10x, esse numero real deve prevalecer sobre o padrao do perfil, ja que o preco_cartao da propria oferta ja foi calculado em cima dessas mesmas 10 parcelas
+    quando a fonte confirma um parcelamento de verdade, tipo 10x, esse numero real deve prevalecer sobre o padrao do perfil, ja que o preco_cartao da propria oferta ja foi calculado em cima dessas mesmas 10 parcelas
     """
     monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
     oferta_encontrada = OfertaEncontradaFalsa(
@@ -269,7 +267,7 @@ def test_pesquisar_produto_automaticamente_combina_fontes_e_marca_origem(monkeyp
 
 def test_buscar_parceiro_para_loja_prioriza_parceiros_conhecidos_informado(monkeypatch):
     """
-    , quando parceiros_conhecidos e informado, tipicamente vindo da tabela livelo_parceiros
+    quando parceiros_conhecidos e informado, tipicamente vindo da tabela livelo_parceiros
     do banco ja atualizada pelo botao "atualizar parceiros da livelo", ele deve ganhar de
     PARCEIROS_LIVELO_CONHECIDOS, mesmo que o mesmo nome exista nos dois, ver
     routers/ofertas.py _parceiros_para_pesquisa_automatica.

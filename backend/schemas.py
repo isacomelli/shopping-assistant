@@ -1,13 +1,11 @@
 """
-, modelos pydantic usados nas rotas da api.
+modelos pydantic usados nas rotas da api.
 
-, este arquivo so descreve o formato dos dados que entram e saem pela api, a regra de negocio continua inteira em engine/price_engine.py, database/db.py e services/
+este arquivo so descreve o formato dos dados que entram e saem pela api, a regra de negocio continua inteira em engine/price_engine.py, database/db.py e services/
 """
 
 from typing import Optional
-
 from pydantic import BaseModel, Field
-
 
 # perfil financeiro
 
@@ -163,7 +161,7 @@ class ResultadoAutomaticoOut(BaseModel):
 
 class PesquisaAutomaticaOut(BaseModel):
     """
-    , envelope da resposta da pesquisa automatica, alem do ranking de ofertas, informa se o resultado veio do cache ou de uma consulta nova, e quais fontes, quando houve alguma, falharam durante a busca, sem interromper a pesquisa
+    envelope da resposta da pesquisa automatica, alem do ranking de ofertas, informa se o resultado veio do cache ou de uma consulta nova, e quais fontes, quando houve alguma, falharam durante a busca, sem interromper a pesquisa
     """
 
     resultados: list[ResultadoAutomaticoOut]
@@ -173,7 +171,7 @@ class PesquisaAutomaticaOut(BaseModel):
 
 class CalculoLivreOut(BaseModel):
     """
-    , resultado da calculadora livre, a mesma logica de calculo de uma oferta, so que sem estar ligada a nenhum produto nem gravar nada no banco, util para simular qualquer compra do dia a dia
+    resultado da calculadora livre, a mesma logica de calculo de uma oferta, so que sem estar ligada a nenhum produto nem gravar nada no banco, util para simular qualquer compra do dia a dia
     """
 
     resultado: ResultadoCalculoOut

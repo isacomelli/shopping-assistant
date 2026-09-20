@@ -28,6 +28,7 @@ export function obterDominioDaOferta(url: string | null | undefined): string | n
 
 export function obterLogoDaLoja(url: string | null | undefined): string | null {
   const dominio = obterDominioDaOferta(url);
-  if (!dominio) return null;
+  // links internos do Google Shopping não identificam a loja, então o favicon do Google seria enganoso
+  if (!dominio || dominio.endsWith("google.com")) return null;
   return `https://www.google.com/s2/favicons?domain=${dominio}&sz=64`;
 }

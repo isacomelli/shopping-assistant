@@ -1,25 +1,31 @@
-"""
-Scraper publico de ofertas no google shopping, por nome de produto, fonte principal de busca do aplicativo, substituindo o buscape como origem primaria e trazendo uma quantidade muito maior de lojas para o comparativo, incluindo lojas que o buscape nunca lista, como leroy merlin, shopee, aliexpress e mercado livre.
+"""Scraper público de ofertas do Google Shopping, usado como fonte principal da pesquisa automática."""
 
-Este modulo segue a mesma separacao de responsabilidades usada em scrapers/buscape.py, o navegador so abre a pagina de resultados da aba shopping do google e coleta o html renderizado, atraves de pagina.content(), e toda a extracao de nome, loja, preco, url e imagem acontece fora do navegador, na funcao parsear_html_google_shopping, usando o beautifulsoup.
-
-Sobre selecao de bloqueio, o google costuma exigir verificacao de captcha para trafego automatizado com muita frequencia, mais agressivo que o buscape, por isso este modulo nunca deve ser a unica fonte tentada silenciosamente, o orquestrador em services/pesquisa_produto.py trata uma falha aqui como sinal para tambem consultar o buscape como fonte complementar, e nao como erro fatal da pesquisa inteira.
-
-Quando a consulta falhar por completo, o html da ultima tentativa fica salvo em disco, do mesmo jeito que o scraper do buscape, para facilitar o ajuste dos seletores sem precisar depender de rede.
-"""
-
+import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote_plus, unquote, urlparse
+
+import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 from services.normalizacao_lojas import normalizar_e_filtrar_ofertas
 
-URL_BUSCA_SHOPPING = "https://www.google.com/search?tbm=shop&hl=pt-BR&gl=BR&q={termo}"
+# a aba Produtos do Google usa udm=28, o parâmetro tbm=shop fica como alternativa caso o formato antigo volte a ser servido
+URLS_BUSCA_SHOPPING = [
+    "https://www.google.com/search?udm=28&hl=pt-BR&gl=BR&q={termo}",
+    "https://www.google.com/search?tbm=shop&hl=pt-BR&gl=BR&q={termo}",
+]
 
-CAMINHO_DEBUG_HTML = Path(__file__).parent.parent / "scrapers" / "debug_google_shopping.html"
-CAMINHO_ULTIMO_HTML = Path(__file__).parent.parent / "scrapers" / "ultimo_html_google_shopping.html"
+# a API do Serper só é usada quando a variável de ambiente SERPER_API_KEY estiver preenchida
+URL_API_SERPER = "https://google.serper.dev/shopping"
+TIMEOUT_API_SEGUNDOS = 20
+
+# no Docker esta pasta é montada no computador, assim os HTMLs de depuração aparecem no projeto
+DIRETORIO_DEBUG = Path(os.environ.get("DIRETORIO_DEBUG", Path(__file__).parent.parent / "scrapers"))
+CAMINHO_DEBUG_HTML = DIRETORIO_DEBUG / "debug_google_shopping.html"
+CAMINHO_ULTIMO_HTML = DIRETORIO_DEBUG / "ultimo_html_google_shopping.html"
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -37,16 +43,27 @@ SELETORES_BANNER_COOKIES = [
     "#L2AGLb",
 ]
 
-# seletor do cartao de cada resultado na aba shopping, o google usa classes com hash que mudam com frequencia, entao a extracao real, dentro de _extrair_oferta_do_cartao, nao depende so deste seletor, ela tambem confirma a presenca de um link de produto e de um preco reconhecivel antes de aceitar o cartao como uma oferta valida
-SELETOR_CARTAO_RESULTADO = "div.sh-dgr__grid-result, div.sh-dlr__list-result, div[data-docid]"
+# o Google mostra preços sem centavos, como R$ 1.398, então os centavos são opcionais
+PADRAO_PRECO = re.compile(r"R\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{2}))?")
+PADRAO_CASHBACK = re.compile(r"(\d+(?:[.,]\d+)?)\s*%\s*de\s*cashback", re.IGNORECASE)
 
-PADRAO_PRECO = re.compile(r"R\$\s*([\d.]+,\d{2})")
+PREFIXOS_LINHA_SECUNDARIA = (
+    "grátis", "gratis", "frete", "entrega", "patrocinado", "méliuz", "meliuz",
+    "ganhe", "ativar", "sem cashback", "nota da loja", "em até", "em ate",
+    "ou ", "de r$", "devolução", "devolucao", "retirada", "parcel", "usado",
+)
+
+# marcadores específicos da página de verificação do Google, a palavra recaptcha sozinha gera falso positivo
+MARCADORES_BLOQUEIO = ("/sorry/", 'id="captcha-form"', "g-recaptcha", "tráfego incomum", "unusual traffic")
+
+# limite de texto para um cartão de produto, evita subir até containers que englobam a página inteira
+LIMITE_TEXTO_CARTAO = 400
+LIMITE_TEXTO_PRECO = 30
+LIMITE_TAMANHO_NOME_LOJA = 40
 
 
 class ErroScraperGoogleShopping(Exception):
-    """
-    Erro especifico do scraper do google shopping, para diferenciar falha de rede ou bloqueio por captcha de um erro generico de programacao
-    """
+    """Erro específico do scraper do Google Shopping, usado para bloqueio por captcha ou ausência de resultados."""
 
 
 @dataclass
@@ -57,12 +74,15 @@ class OfertaGoogleShopping:
     nome_produto: str = ""
     imagem_produto: str = ""
 
-    # o google shopping raramente detalha pix e parcelamento no proprio cartao de resultado, entao estes campos ficam vazios na maior parte das ofertas, e o preco anunciado e usado como preco unico ate uma etapa posterior, como o enriquecimento manual ou o casamento com a propria pagina da loja, preencher esses valores com mais precisao
+    # o Google raramente detalha Pix e parcelamento no cartão de resultado, então o preço anunciado vale para os dois
     preco_pix: float = 0.0
     preco_cartao: float = 0.0
     confianca_pix_cartao: bool = False
     parcelas: int = 1
     valor_parcela: float = 0.0
+
+    # cashback do Méliuz exibido pelo próprio Google no cartão, quando existir
+    cashback_pct: float = 0.0
 
     origem: str = "google_shopping"
 
@@ -73,6 +93,182 @@ class OfertaGoogleShopping:
         if not self.preco_pix and not self.preco_cartao:
             self.preco_pix = self.preco
             self.preco_cartao = self.preco
+
+
+def _converter_preco(encontrado):
+    inteiro = encontrado.group(1).replace(".", "")
+    centavos = encontrado.group(2) or "00"
+    return float(f"{inteiro}.{centavos}")
+
+
+def _linha_e_ruido(linha):
+    """Indica se uma linha de texto do cartão não é nome de produto nem de loja, como preço, frete, nota ou cashback."""
+    minuscula = linha.lower().strip()
+    if len(minuscula) < 2 or PADRAO_PRECO.search(linha):
+        return True
+    if minuscula.startswith(PREFIXOS_LINHA_SECUNDARIA):
+        return True
+    if "cashback" in minuscula or re.search(r"\d+\s*x\b", minuscula):
+        return True
+    return re.fullmatch(r"[\dR$.,/%()\s]+", linha) is not None
+
+
+def _linhas_uteis(cartao):
+    return [linha.strip() for linha in cartao.stripped_strings if not _linha_e_ruido(linha)]
+
+
+def _elementos_de_preco(soup):
+    """Devolve os elementos mais internos cujo texto é um preço, mesmo quando o símbolo R$ e o valor estão em tags separadas."""
+    elementos = []
+    for tag in soup.find_all(True):
+        texto = tag.get_text(" ", strip=True)
+        if len(texto) > LIMITE_TEXTO_PRECO or not PADRAO_PRECO.search(texto):
+            continue
+        filhos = tag.find_all(True, recursive=False)
+        if any(PADRAO_PRECO.search(filho.get_text(" ", strip=True)) for filho in filhos):
+            continue
+        elementos.append(tag)
+    return elementos
+
+
+def _contar_precos(tag, ids_de_preco):
+    total = 1 if id(tag) in ids_de_preco else 0
+    return total + sum(1 for descendente in tag.descendants if id(descendente) in ids_de_preco)
+
+
+def _localizar_cartao(elemento_preco, ids_de_preco):
+    """Sobe a partir do preço até o maior bloco que ainda contém um único preço e um link, sem depender de classes CSS."""
+    link_pai = elemento_preco.find_parent("a", href=True)
+    if link_pai is not None:
+        texto_link = link_pai.get_text(" ", strip=True)
+        cabe_no_limite = len(texto_link) <= LIMITE_TEXTO_CARTAO
+        if cabe_no_limite and _contar_precos(link_pai, ids_de_preco) <= 2 and len(_linhas_uteis(link_pai)) >= 2:
+            return link_pai
+
+    cartao = None
+    atual = elemento_preco.parent
+    while atual is not None and atual.name not in ("body", "html", "[document]"):
+        if len(atual.get_text(" ", strip=True)) > LIMITE_TEXTO_CARTAO:
+            break
+        if _contar_precos(atual, ids_de_preco) > 1:
+            break
+        if atual.find("a", href=True):
+            cartao = atual
+        atual = atual.parent
+    return cartao
+
+
+def _normalizar_url(href):
+    if href.startswith("/url?q="):
+        return unquote(href.split("/url?q=")[1].split("&")[0])
+    if href.startswith("/"):
+        return f"https://www.google.com{href}"
+    return href
+
+
+def _extrair_dominio(url):
+    """Devolve o nome do domínio da loja, ou vazio quando o link aponta para o próprio Google."""
+    host = (urlparse(url or "").hostname or "").removeprefix("www.")
+    if not host or host.endswith("google.com") or host.endswith("google.com.br"):
+        return ""
+    return host.split(".")[0].capitalize()
+
+
+def _extrair_imagem(cartao):
+    for imagem in cartao.find_all("img"):
+        origem = imagem.get("src") or imagem.get("data-src") or ""
+        if origem.startswith("http"):
+            return origem
+    return ""
+
+
+def _extrair_oferta_do_cartao(cartao):
+    """Monta uma oferta a partir de um cartão, devolvendo None quando não houver preço, link ou nome reconhecíveis."""
+    link = cartao if cartao.name == "a" and cartao.get("href") else cartao.find("a", href=True)
+    if link is None:
+        return None
+    url_produto = _normalizar_url(link.get("href", ""))
+
+    texto_cartao = cartao.get_text(" ", strip=True)
+    preco_encontrado = PADRAO_PRECO.search(texto_cartao)
+    if preco_encontrado is None:
+        return None
+
+    linhas = _linhas_uteis(cartao)
+    if not linhas:
+        return None
+    nome_produto = max(linhas, key=len)
+    posicao_nome = linhas.index(nome_produto)
+    candidatas_loja = linhas[posicao_nome + 1:] + linhas[:posicao_nome]
+    loja = next((linha for linha in candidatas_loja if len(linha) <= LIMITE_TAMANHO_NOME_LOJA), "")
+    loja = loja or _extrair_dominio(url_produto) or "Loja não identificada"
+
+    cashback_encontrado = PADRAO_CASHBACK.search(texto_cartao)
+    cashback_pct = float(cashback_encontrado.group(1).replace(",", ".")) if cashback_encontrado else 0.0
+
+    return OfertaGoogleShopping(
+        loja=loja,
+        preco=_converter_preco(preco_encontrado),
+        url_produto=url_produto,
+        nome_produto=nome_produto,
+        imagem_produto=_extrair_imagem(cartao),
+        cashback_pct=cashback_pct,
+    )
+
+
+def parsear_html_google_shopping(html):
+    """Extrai as ofertas do HTML bruto da aba de produtos do Google, sem depender de rede nem do Playwright."""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    elementos = _elementos_de_preco(soup)
+    ids_de_preco = {id(elemento) for elemento in elementos}
+
+    ofertas = []
+    cartoes_vistos = set()
+    for elemento in elementos:
+        cartao = _localizar_cartao(elemento, ids_de_preco)
+        if cartao is None or id(cartao) in cartoes_vistos:
+            continue
+        cartoes_vistos.add(id(cartao))
+        oferta = _extrair_oferta_do_cartao(cartao)
+        if oferta:
+            ofertas.append(oferta)
+    return ofertas
+
+
+def _ofertas_do_serper(dados):
+    """Converte a resposta JSON da API do Serper em ofertas, ignorando itens sem preço, loja ou link."""
+    ofertas = []
+    for item in dados.get("shopping", []):
+        preco_encontrado = PADRAO_PRECO.search(str(item.get("price", "")))
+        loja = str(item.get("source", "")).strip()
+        url_produto = str(item.get("link", "")).strip()
+        if preco_encontrado is None or not loja or not url_produto:
+            continue
+        ofertas.append(
+            OfertaGoogleShopping(
+                loja=loja,
+                preco=_converter_preco(preco_encontrado),
+                url_produto=url_produto,
+                nome_produto=str(item.get("title", "")).strip(),
+                imagem_produto=str(item.get("imageUrl", "")).strip(),
+            )
+        )
+    return ofertas
+
+
+def _buscar_via_api_serper(nome_produto, chave_api):
+    """Consulta o Google Shopping pela API do Serper, que não sofre bloqueio de captcha."""
+    resposta = requests.post(
+        URL_API_SERPER,
+        headers={"X-API-KEY": chave_api, "Content-Type": "application/json"},
+        json={"q": nome_produto, "gl": "br", "hl": "pt-br", "num": 40},
+        timeout=TIMEOUT_API_SEGUNDOS,
+    )
+    resposta.raise_for_status()
+    return _ofertas_do_serper(resposta.json())
 
 
 def _fechar_banner_cookies(pagina):
@@ -87,139 +283,122 @@ def _fechar_banner_cookies(pagina):
             continue
 
 
-def _extrair_preco_de_texto(texto):
-    if not texto:
-        return None
-    encontrado = PADRAO_PRECO.search(texto)
-    if not encontrado:
-        return None
-    return float(encontrado.group(1).replace(".", "").replace(",", "."))
+def _rolar_pagina(pagina, vezes=3):
+    """Rola a página algumas vezes para o Google carregar mais resultados."""
+    for _ in range(vezes):
+        pagina.mouse.wheel(0, 2500)
+        pagina.wait_for_timeout(800)
 
 
-def _extrair_loja_do_cartao(cartao):
-    """
-    O nome da loja no cartao de resultado do google shopping costuma vir num pequeno texto proximo ao preco, sem um atributo estavel proprio, entao a extracao tenta alguns padroes textuais comuns antes de cair para o dominio do link do produto
-    """
-    candidatos = cartao.select("div.aULzUe, div.IuHnof, span.aULzUe, div.merchant-title")
-    for candidato in candidatos:
-        texto = candidato.get_text(strip=True)
-        if texto:
-            return texto
-    return ""
+def _html_indica_bloqueio(html, url):
+    conteudo = f"{url} {html}".lower()
+    return any(marcador in conteudo for marcador in MARCADORES_BLOQUEIO)
 
 
-def _extrair_dominio(url):
-    padrao_dominio = re.search(r"https?://(?:www\.)?([^./]+)\.", url or "")
-    if padrao_dominio:
-        return padrao_dominio.group(1).capitalize()
-    return "loja nao identificada"
+def _descrever_pagina(html, url):
+    """Resume título e endereço final da página, para o erro mostrar o que o navegador realmente recebeu."""
+    titulo = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    texto_titulo = " ".join(titulo.group(1).split())[:80] if titulo else "sem título"
+    return f"título '{texto_titulo}', endereço final {url[:120]}"
 
 
-def _extrair_oferta_do_cartao(cartao):
-    """
-    Monta uma OfertaGoogleShopping a partir de um cartao de resultado, devolvendo none quando o cartao nao tiver um preco reconhecivel ou nenhum link de produto, sinal de que provavelmente e um bloco de filtro ou de publicidade sem oferta de verdade
-    """
-    link = cartao.select_one("a")
-    if not link:
-        return None
-    url_produto = link.get("href", "")
-    if url_produto.startswith("/url?q="):
-        url_produto = url_produto.split("/url?q=")[1].split("&")[0]
-    elif url_produto.startswith("/"):
-        url_produto = f"https://www.google.com{url_produto}"
-
-    texto_cartao = cartao.get_text(" ", strip=True)
-    preco = _extrair_preco_de_texto(texto_cartao)
-    if preco is None:
-        return None
-
-    nome_elemento = cartao.select_one("h3, h4, div.tAxDx, div.Xjkr3b")
-    nome_produto = nome_elemento.get_text(strip=True) if nome_elemento else ""
-
-    loja = _extrair_loja_do_cartao(cartao) or _extrair_dominio(url_produto)
-
-    imagem_elemento = cartao.select_one("img")
-    imagem_produto = imagem_elemento.get("src", "") if imagem_elemento else ""
-
-    return OfertaGoogleShopping(
-        loja=loja,
-        preco=preco,
-        url_produto=url_produto,
-        nome_produto=nome_produto,
-        imagem_produto=imagem_produto,
-    )
+def _salvar_html(caminho, html):
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(html, encoding="utf-8")
 
 
-def parsear_html_google_shopping(html):
-    """
-    Extrai a lista de ofertas a partir do html bruto da aba shopping do google, sem depender do playwright nem de rede, util tanto para ajustar os seletores quanto para reprocessar uma busca antiga sem consultar o site de novo
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    cartoes = soup.select(SELETOR_CARTAO_RESULTADO)
-
-    ofertas = []
-    for cartao in cartoes:
-        oferta = _extrair_oferta_do_cartao(cartao)
-        if oferta:
-            ofertas.append(oferta)
-    return ofertas
+def _abrir_navegador(playwright, headless):
+    """Prefere o Chromium completo em modo headless novo, que se parece mais com um Chrome comum, e cai para o padrão se não houver suporte."""
+    argumentos = ["--disable-blink-features=AutomationControlled"]
+    try:
+        return playwright.chromium.launch(channel="chromium", headless=headless, args=argumentos)
+    except Exception:
+        return playwright.chromium.launch(headless=headless, args=argumentos)
 
 
-def _coletar_html_busca(termo, headless, timeout_ms):
+def _coletar_html_de_url(url, headless, timeout_ms):
+    """Abre uma URL de busca num navegador headless e devolve o HTML já renderizado, junto da URL final."""
     with sync_playwright() as playwright:
-        navegador = playwright.chromium.launch(
-            headless=headless,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        guia = navegador.new_context(
+        navegador = _abrir_navegador(playwright, headless)
+        contexto = navegador.new_context(
             user_agent=USER_AGENT,
             locale="pt-BR",
+            timezone_id="America/Sao_Paulo",
             viewport={"width": 1366, "height": 900},
         )
-        guia.add_init_script(SCRIPT_ANTI_DETECCAO)
-        pagina = guia.new_page()
-
-        url = URL_BUSCA_SHOPPING.format(termo=termo.replace(" ", "+"))
+        contexto.add_init_script(SCRIPT_ANTI_DETECCAO)
+        pagina = contexto.new_page()
         try:
             pagina.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
             _fechar_banner_cookies(pagina)
-            pagina.wait_for_timeout(1500)
             try:
-                pagina.wait_for_selector(SELETOR_CARTAO_RESULTADO, timeout=timeout_ms, state="attached")
+                pagina.wait_for_function(
+                    r"document.body && /R\$\s*\d/.test(document.body.innerText)",
+                    timeout=timeout_ms,
+                )
             except Exception:
                 pass
-            html = pagina.content()
+            _rolar_pagina(pagina)
+            return pagina.content(), pagina.url
         finally:
-            guia.close()
+            contexto.close()
             navegador.close()
 
-    return html
+
+def _buscar_via_navegador(nome_produto, timeout_ms, headless, motivos):
+    """Tenta cada URL de busca no navegador, acumulando os motivos de falha, e devolve as ofertas normalizadas ou lista vazia."""
+    termo = quote_plus(nome_produto)
+    for modelo_url in URLS_BUSCA_SHOPPING:
+        try:
+            html, url_final = _coletar_html_de_url(modelo_url.format(termo=termo), headless, timeout_ms)
+        except Exception as erro:
+            motivos.append(f"falha ao abrir a busca, {erro}")
+            continue
+
+        _salvar_html(CAMINHO_ULTIMO_HTML, html)
+        descricao = _descrever_pagina(html, url_final)
+
+        ofertas_brutas = parsear_html_google_shopping(html)
+        if not ofertas_brutas:
+            if _html_indica_bloqueio(html, url_final):
+                motivos.append(f"o Google exigiu verificação de captcha, {descricao}")
+                return []
+            motivos.append(f"a página abriu, mas nenhuma oferta com preço foi reconhecida, {descricao}")
+            continue
+
+        ofertas = normalizar_e_filtrar_ofertas(ofertas_brutas, nome_produto)
+        if ofertas:
+            return ofertas
+        motivos.append(
+            f"{len(ofertas_brutas)} resultados encontrados, mas todos foram descartados pelo filtro de qualidade"
+        )
+    return []
 
 
 def buscar_ofertas_google_shopping(nome_produto, timeout_ms=30000, headless=True, salvar_debug_em_falha=True):
-    """
-    Pesquisa um produto na aba shopping do google e devolve a lista de ofertas encontradas, ja padronizadas e filtradas por services/normalizacao_lojas.normalizar_e_filtrar_ofertas, levanta ErroScraperGoogleShopping quando a pagina nao trouxer nenhuma oferta reconhecivel, o chamador, em services/pesquisa_produto.py, decide se cai para o buscape como fonte complementar
-    """
-    try:
-        html = _coletar_html_busca(nome_produto, headless, timeout_ms)
-    except Exception as erro:
-        raise ErroScraperGoogleShopping(
-            f"nao foi possivel abrir a busca do google shopping para {nome_produto}, detalhe tecnico, {erro}"
-        )
+    """Pesquisa um produto no Google Shopping, pela API do Serper quando houver chave e pelo navegador nos demais casos, levantando erro com o motivo quando nada for encontrado."""
+    motivos = []
 
-    if html:
-        CAMINHO_ULTIMO_HTML.write_text(html, encoding="utf-8")
+    chave_api = os.environ.get("SERPER_API_KEY", "").strip()
+    if chave_api:
+        try:
+            ofertas_brutas = _buscar_via_api_serper(nome_produto, chave_api)
+            ofertas = normalizar_e_filtrar_ofertas(ofertas_brutas, nome_produto)
+            if ofertas:
+                return ofertas
+            motivos.append(f"a API retornou {len(ofertas_brutas)} resultados, mas nenhum passou no filtro de qualidade")
+        except Exception as erro:
+            motivos.append(f"falha na API do Serper, {erro}")
 
-    ofertas_brutas = parsear_html_google_shopping(html) if html else []
+    ofertas = _buscar_via_navegador(nome_produto, timeout_ms, headless, motivos)
+    if ofertas:
+        return ofertas
 
-    if not ofertas_brutas:
-        if salvar_debug_em_falha and html:
-            CAMINHO_DEBUG_HTML.write_text(html, encoding="utf-8")
-        raise ErroScraperGoogleShopping(
-            f"a busca abriu, mas nenhuma oferta foi reconhecida para {nome_produto}, isso costuma acontecer quando o google exige verificacao de captcha para trafego automatizado, o html foi salvo em {CAMINHO_ULTIMO_HTML} para conferencia, o orquestrador deve cair para o buscape como fonte complementar enquanto isso"
-        )
-
-    return normalizar_e_filtrar_ofertas(ofertas_brutas, nome_produto)
+    if salvar_debug_em_falha and CAMINHO_ULTIMO_HTML.exists():
+        _salvar_html(CAMINHO_DEBUG_HTML, CAMINHO_ULTIMO_HTML.read_text(encoding="utf-8"))
+    raise ErroScraperGoogleShopping(
+        f"nenhuma oferta obtida para {nome_produto}, {'; '.join(motivos)}. HTML salvo em {CAMINHO_ULTIMO_HTML}"
+    )
 
 
 if __name__ == "__main__":

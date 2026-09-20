@@ -10,6 +10,11 @@ import { api } from "@/lib/api";
 import { formatarMoeda } from "@/lib/format";
 import type { Cartao, Oferta, Perfil, Produto } from "@/lib/types";
 
+const NOMES_FONTES: Record<string, string> = {
+  google_shopping: "Google Shopping",
+  buscape: "Buscapé",
+};
+
 export default function PaginaCalculadora() {
   return (
     <Suspense fallback={<p className="text-sm text-ink-500">Carregando.</p>}>
@@ -33,6 +38,7 @@ function ConteudoCalculadora() {
   const [carregandoOfertas, setCarregandoOfertas] = useState(false);
   const [pesquisando, setPesquisando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,20 +85,20 @@ function ConteudoCalculadora() {
     setPesquisando(true);
     setErro(null);
     setMensagem(null);
+    setAviso(null);
     try {
       const resposta = await api.pesquisarAutomaticamente(produtoId, forcarAtualizacao);
       await carregarOfertas(produtoId);
 
       const origemMensagem = resposta.veio_do_cache
         ? "resultado reaproveitado do cache local"
-        : "ofertas atualizadas agora, via Google Shopping e Buscapé";
-      const fontesComFalha = Object.keys(resposta.fontes_com_erro);
-      const avisoFontes =
-        fontesComFalha.length > 0 ? `, atenção, sem resposta de, ${fontesComFalha.join(", ")}` : "";
-
-      setMensagem(
-        `${resposta.resultados.length} oferta(s) encontrada(s), ${origemMensagem}${avisoFontes}.`,
+        : "ofertas atualizadas agora";
+      const avisos = Object.entries(resposta.fontes_com_erro).map(
+        ([fonte, detalhe]) => `${NOMES_FONTES[fonte] ?? fonte} sem resposta, ${detalhe}`,
       );
+
+      setMensagem(`${resposta.resultados.length} oferta(s) encontrada(s), ${origemMensagem}.`);
+      setAviso(avisos.length > 0 ? avisos.join(" ") : null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível pesquisar as ofertas agora.");
     } finally {
@@ -135,8 +141,7 @@ function ConteudoCalculadora() {
           Calculadora de Compra Inteligente
         </h1>
         <p className="mt-1 text-sm text-ink-500">
-          Ranking de ofertas pelo custo efetivo, considerando Pix, cartão, pontos e cashback, a
-          partir do Google Shopping, com o Buscapé como fonte complementar.
+          Ranking de ofertas pelo custo efetivo, considerando Pix, cartão, pontos e cashback, a partir do Google Shopping, com o Buscapé como fonte complementar.
         </p>
       </div>
 
@@ -182,6 +187,7 @@ function ConteudoCalculadora() {
         )}
 
         {mensagem && <p className="mt-3 text-sm text-brand-700">{mensagem}</p>}
+        {aviso && <p className="mt-3 text-sm text-alert-500">{aviso}</p>}
         {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
       </Card>
 

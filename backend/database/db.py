@@ -1,13 +1,14 @@
 """
-, camada de acesso ao banco sqlite do assistente de compras.
+camada de acesso ao banco sqlite do assistente de compras.
 
-, todas as tabelas ja possuem a coluna user_id, mesmo que hoje so exista um unico usuario local, justamente para facilitar uma eventual migracao para um servico multiusuario na nuvem no futuro.
+todas as tabelas ja possuem a coluna user_id, mesmo que hoje so exista um unico usuario local, justamente para facilitar uma eventual migracao para um servico multiusuario na nuvem no futuro.
 
-, sobre a tabela livelo_parceiros, o cadastro e manual, feito uma vez por parceiro, com o nome exatamente como ele costuma aparecer nos resultados da busca, mais um alias opcional para apelidos do mesmo grupo, tipo "magalu" para "magazine luiza". a pesquisa automatica em services/pesquisa_produto.py usa buscar_parceiro_livelo_por_nome para casar cada loja encontrada com esse cadastro. o casamento em si, que reconhece tanto substring simples quanto apelidos de mercado conhecidos, tipo "magalu" para "magazine luiza", mora em services/casamento_lojas.py, ver esse modulo para os detalhes.
+sobre a tabela livelo_parceiros, o cadastro e manual, feito uma vez por parceiro, com o nome exatamente como ele costuma aparecer nos resultados da busca, mais um alias opcional para apelidos do mesmo grupo, tipo "magalu" para "magazine luiza". a pesquisa automatica em services/pesquisa_produto.py usa buscar_parceiro_livelo_por_nome para casar cada loja encontrada com esse cadastro. o casamento em si, que reconhece tanto substring simples quanto apelidos de mercado conhecidos, tipo "magalu" para "magazine luiza", mora em services/casamento_lojas.py, ver esse modulo para os detalhes.
 
-, sobre a tabela cache_pesquisas, ela guarda o resultado bruto de cada pesquisa de produto, com o termo pesquisado, a lista de ofertas encontradas ja serializada em json e a data da consulta, para evitar bater na rede de novo quando o mesmo termo for pesquisado dentro de um intervalo curto, ver obter_cache_pesquisa e salvar_cache_pesquisa mais abaixo, e services/pesquisa_produto.py para quem consome esse cache.
+sobre a tabela cache_pesquisas, ela guarda o resultado bruto de cada pesquisa de produto, com o termo pesquisado, a lista de ofertas encontradas ja serializada em json e a data da consulta, para evitar bater na rede de novo quando o mesmo termo for pesquisado dentro de um intervalo curto, ver obter_cache_pesquisa e salvar_cache_pesquisa mais abaixo, e services/pesquisa_produto.py para quem consome esse cache.
 """
 
+import os
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -15,7 +16,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from services.casamento_lojas import encontrar_parceiro_equivalente
 
-CAMINHO_BANCO = Path(__file__).parent / "shopping.db"
+# o caminho pode ser definido por variável de ambiente para que o banco fique num volume separado do código no Docker
+CAMINHO_BANCO = Path(os.environ.get("CAMINHO_BANCO", Path(__file__).parent / "shopping.db"))
 
 USER_ID_PADRAO = 1
 
@@ -42,7 +44,7 @@ def conexao():
 
 def _adicionar_coluna_se_nao_existir(conn, tabela, definicao_coluna):
     """
-    , tenta adicionar uma coluna nova numa tabela ja existente, e ignora o erro caso a coluna ja tenha sido criada numa execucao anterior, e assim que o sqlite migra esquema em bancos que ja estao em uso
+    tenta adicionar uma coluna nova numa tabela ja existente, e ignora o erro caso a coluna ja tenha sido criada numa execucao anterior, e assim que o sqlite migra esquema em bancos que ja estao em uso
     """
     try:
         conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {definicao_coluna}")
@@ -53,7 +55,7 @@ def _adicionar_coluna_se_nao_existir(conn, tabela, definicao_coluna):
 
 def _renomear_coluna_se_necessario(conn, tabela, coluna_antiga, coluna_nova):
     """
-    , tenta renomear uma coluna existente, e ignora o erro quando a coluna antiga ja nao existe mais, seja porque o banco e novo, seja porque a renomeacao ja rodou numa execucao anterior, usado para corrigir o nome da coluna de "cdi_mensal" para "rendimento_mensal", ja que o valor nunca foi de fato o cdi, e sim o rendimento mensal liquido informado pelo usuario
+    tenta renomear uma coluna existente, e ignora o erro quando a coluna antiga ja nao existe mais, seja porque o banco e novo, seja porque a renomeacao ja rodou numa execucao anterior, usado para corrigir o nome da coluna de "cdi_mensal" para "rendimento_mensal", ja que o valor nunca foi de fato o cdi, e sim o rendimento mensal liquido informado pelo usuario
     """
     try:
         conn.execute(f"ALTER TABLE {tabela} RENAME COLUMN {coluna_antiga} TO {coluna_nova}")
@@ -222,7 +224,7 @@ def obter_configuracoes():
 def salvar_configuracoes(rendimento_mensal, cotacao_dolar, valor_milheiro_padrao,
                           percentual_bonus_transferencia_padrao, parcelas_padrao):
     """
-    , salva o perfil financeiro, o campo de pontos por dolar padrao do cartao nao entra mais aqui, porque cada cartao cadastrado ja tem sua propria taxa de pontos por dolar, um padrao global so duplicava essa informacao sem servir pra nada, percentual_bonus_transferencia_padrao e parcelas_padrao sao os valores usados pela pesquisa automatica quando nenhuma fonte confirma um parcelamento proprio da loja, ver services/pesquisa_produto.py
+    salva o perfil financeiro, o campo de pontos por dolar padrao do cartao nao entra mais aqui, porque cada cartao cadastrado ja tem sua propria taxa de pontos por dolar, um padrao global so duplicava essa informacao sem servir pra nada, percentual_bonus_transferencia_padrao e parcelas_padrao sao os valores usados pela pesquisa automatica quando nenhuma fonte confirma um parcelamento proprio da loja, ver services/pesquisa_produto.py
     """
     with conexao() as conn:
         conn.execute(
@@ -315,7 +317,7 @@ def atualizar_status_produto(produto_id, status):
 
 def excluir_produto(produto_id):
     """
-    , remove o produto e tudo que depende dele, as ofertas cadastradas e o historico de precos, para nao deixar linha orfa no banco
+    remove o produto e tudo que depende dele, as ofertas cadastradas e o historico de precos, para nao deixar linha orfa no banco
     """
     with conexao() as conn:
         produto = conn.execute(
@@ -363,7 +365,7 @@ def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parce
 
 def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0, url_produto="", logo_url="", imagem_produto="", origem="manual"):
     """
-    , cadastra uma oferta a mao, tipicamente vinda do formulario manual da calculadora, devolve o id da linha criada, para o chamador poder linkar essa oferta a um registro de historico, logo_url e imagem_produto ficam vazias por padrao, ja que o formulario manual nao pesquisa nenhuma fonte, so a pesquisa automatica preenche esses campos
+    cadastra uma oferta a mao, tipicamente vinda do formulario manual da calculadora, devolve o id da linha criada, para o chamador poder linkar essa oferta a um registro de historico, logo_url e imagem_produto ficam vazias por padrao, ja que o formulario manual nao pesquisa nenhuma fonte, so a pesquisa automatica preenche esses campos
     """
     with conexao() as conn:
         return _inserir_oferta(
@@ -376,7 +378,7 @@ def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, 
 
 def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto, logo_url, imagem_produto="", origem="google_shopping"):
     """
-    , cadastra uma oferta encontrada pela pesquisa automatica, mesma tabela da oferta manual, so que sempre com preco, url_produto e origem preenchidos, devolve o id da linha criada, logo_url vem do parceiro livelo casado pela propria pesquisa, ver services/pesquisa_produto.py, e fica vazia quando nenhum parceiro casar, origem indica de qual fonte a oferta veio, google_shopping ou buscape
+    cadastra uma oferta encontrada pela pesquisa automatica, mesma tabela da oferta manual, so que sempre com preco, url_produto e origem preenchidos, devolve o id da linha criada, logo_url vem do parceiro livelo casado pela propria pesquisa, ver services/pesquisa_produto.py, e fica vazia quando nenhum parceiro casar, origem indica de qual fonte a oferta veio, google_shopping ou buscape
     """
     with conexao() as conn:
         return _inserir_oferta(
@@ -389,7 +391,7 @@ def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, p
 
 def atualizar_oferta(oferta_id, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0):
     """
-    , atualiza uma oferta existente com os dados do formulario manual de edicao, logo_url e imagem_produto nao entram nesta atualizacao de proposito, o formulario manual nao pesquisa nenhuma fonte, entao uma logo ou imagem ja gravada por uma pesquisa automatica anterior continua valendo depois da edicao
+    atualiza uma oferta existente com os dados do formulario manual de edicao, logo_url e imagem_produto nao entram nesta atualizacao de proposito, o formulario manual nao pesquisa nenhuma fonte, entao uma logo ou imagem ja gravada por uma pesquisa automatica anterior continua valendo depois da edicao
     """
     with conexao() as conn:
         cursor = conn.execute(
@@ -457,9 +459,9 @@ def excluir_historico(registro_id, produto_id):
 
 def encontrar_oferta_do_historico(registro_id, produto_id):
     """
-    , devolve a oferta ligada a um registro de historico, para o front poder abrir direto a edicao daquela oferta na calculadora.
+    devolve a oferta ligada a um registro de historico, para o front poder abrir direto a edicao daquela oferta na calculadora.
 
-    , quando o registro tem oferta_id preenchido, o vinculo e direto, registros mais antigos, criados antes dessa coluna existir, caem de volta para um casamento por loja, escolhendo entre as ofertas daquela loja a que tiver o preco efetivo mais proximo do que foi salvo no historico
+    quando o registro tem oferta_id preenchido, o vinculo e direto, registros mais antigos, criados antes dessa coluna existir, caem de volta para um casamento por loja, escolhendo entre as ofertas daquela loja a que tiver o preco efetivo mais proximo do que foi salvo no historico
     """
     with conexao() as conn:
         historico = conn.execute(
@@ -507,7 +509,7 @@ def listar_parceiros_livelo():
 
 def adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias="", logo_url=""):
     """
-    , cadastra ou atualiza, pelo nome, um parceiro livelo ou esfera com a taxa de pontos por real informada a mao, logo_url e a url real da logo do parceiro, lida direto do html da livelo por scrapers/livelo.py, ver o comentario la sobre por que nao da pra adivinhar essa url a partir so do codigo do parceiro
+    cadastra ou atualiza, pelo nome, um parceiro livelo ou esfera com a taxa de pontos por real informada a mao, logo_url e a url real da logo do parceiro, lida direto do html da livelo por scrapers/livelo.py, ver o comentario la sobre por que nao da pra adivinhar essa url a partir so do codigo do parceiro
     """
     with conexao() as conn:
         conn.execute(
@@ -526,7 +528,7 @@ def adicionar_parceiro_livelo_manual(nome, pontos_padrao, alias="", logo_url="")
 
 def salvar_parceiros_livelo(parceiros):
     """
-    , cadastra ou atualiza varios parceiros de uma vez, aceitando tanto dicts quanto objetos com atributos nome, alias, pontos_padrao e logo_url
+    cadastra ou atualiza varios parceiros de uma vez, aceitando tanto dicts quanto objetos com atributos nome, alias, pontos_padrao e logo_url
     """
     for parceiro in parceiros:
         if isinstance(parceiro, dict):
@@ -552,9 +554,9 @@ def remover_parceiro_livelo(parceiro_id):
 
 def buscar_parceiro_livelo_por_nome(termo):
     """
-    , procura, entre os parceiros cadastrados, aquele cujo nome ou alias mais se aproxima do termo informado, tipicamente o nome de uma loja encontrado na pesquisa automatica.
+    procura, entre os parceiros cadastrados, aquele cujo nome ou alias mais se aproxima do termo informado, tipicamente o nome de uma loja encontrado na pesquisa automatica.
 
-    , o casamento em si acontece em services.casamento_lojas.encontrar_parceiro_equivalente, que reconhece tanto substring simples, o suficiente para nomes como "fast shop" e "fast shop oficial", quanto grupos de apelidos de mercado conhecidos, tipo "magalu" para "magazine luiza", mesmo sem um alias cadastrado a mao para esse parceiro especifico, devolve o primeiro parceiro que bater, ou none quando nenhum casar
+    o casamento em si acontece em services.casamento_lojas.encontrar_parceiro_equivalente, que reconhece tanto substring simples, o suficiente para nomes como "fast shop" e "fast shop oficial", quanto grupos de apelidos de mercado conhecidos, tipo "magalu" para "magazine luiza", mesmo sem um alias cadastrado a mao para esse parceiro especifico, devolve o primeiro parceiro que bater, ou none quando nenhum casar
     """
     if not termo or not termo.strip():
         return None
@@ -571,7 +573,7 @@ def _normalizar_termo_cache(termo):
 
 def obter_cache_pesquisa(termo, validade_horas=VALIDADE_CACHE_PESQUISA_HORAS):
     """
-    , devolve o dicionario com ofertas e origem de uma pesquisa em cache, quando existir e ainda estiver dentro da validade informada, ou none quando nao houver cache, ou quando o cache existente ja tiver expirado
+    devolve o dicionario com ofertas e origem de uma pesquisa em cache, quando existir e ainda estiver dentro da validade informada, ou none quando nao houver cache, ou quando o cache existente ja tiver expirado
     """
     termo_normalizado = _normalizar_termo_cache(termo)
     if not termo_normalizado:
@@ -601,7 +603,7 @@ def obter_cache_pesquisa(termo, validade_horas=VALIDADE_CACHE_PESQUISA_HORAS):
 
 def salvar_cache_pesquisa(termo, ofertas, origem="google_shopping"):
     """
-    , salva ou substitui o cache de uma pesquisa, ofertas deve ser uma lista de dicionarios ja serializaveis em json, tipicamente o mesmo formato devolvido pela rota de pesquisa automatica
+    salva ou substitui o cache de uma pesquisa, ofertas deve ser uma lista de dicionarios ja serializaveis em json, tipicamente o mesmo formato devolvido pela rota de pesquisa automatica
     """
     termo_normalizado = _normalizar_termo_cache(termo)
     if not termo_normalizado:
@@ -624,7 +626,7 @@ def salvar_cache_pesquisa(termo, ofertas, origem="google_shopping"):
 
 def limpar_cache_pesquisa(termo):
     """
-    , remove o cache de uma pesquisa especifica, usado quando o usuario pede explicitamente para atualizar os precos em vez de reaproveitar o cache
+    remove o cache de uma pesquisa especifica, usado quando o usuario pede explicitamente para atualizar os precos em vez de reaproveitar o cache
     """
     termo_normalizado = _normalizar_termo_cache(termo)
     if not termo_normalizado:
