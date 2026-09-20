@@ -7,8 +7,8 @@ import type {
   ParceiroLivelo,
   ParcelaSimulada,
   Perfil,
+  PesquisaAutomaticaResultado,
   Produto,
-  ResultadoAutomatico,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -96,8 +96,12 @@ export const api = {
     }),
   excluirOferta: (produtoId: number, ofertaId: number) =>
     requisitar<void>(`/produtos/${produtoId}/ofertas/${ofertaId}`, { method: "DELETE" }),
-  pesquisarAutomaticamente: (produtoId: number) =>
-    requisitar<ResultadoAutomatico[]>(`/produtos/${produtoId}/pesquisar`, { method: "POST" }),
+  // atualizarCache, quando true, ignora o cache local de pesquisas e forca uma nova consulta ao google shopping e ao buscape, ver database/db.py, obter_cache_pesquisa e salvar_cache_pesquisa
+  pesquisarAutomaticamente: (produtoId: number, atualizarCache = false) =>
+    requisitar<PesquisaAutomaticaResultado>(
+      `/produtos/${produtoId}/pesquisar?atualizar=${atualizarCache}`,
+      { method: "POST" },
+    ),
 
   // parceiros livelo ou esfera
   listarParceirosLivelo: () => requisitar<ParceiroLivelo[]>("/parceiros-livelo"),

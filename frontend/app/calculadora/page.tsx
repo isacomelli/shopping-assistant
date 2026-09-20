@@ -74,17 +74,27 @@ function ConteudoCalculadora() {
     return ofertas.filter((oferta) => oferta.resultado.preco_efetivo <= produtoAtual.preco_alvo!);
   }, [ofertas, produtoAtual]);
 
-  async function pesquisarAutomaticamente() {
+  async function pesquisarAutomaticamente(forcarAtualizacao: boolean) {
     if (produtoId === null) return;
     setPesquisando(true);
     setErro(null);
     setMensagem(null);
     try {
-      const resultados = await api.pesquisarAutomaticamente(produtoId);
+      const resposta = await api.pesquisarAutomaticamente(produtoId, forcarAtualizacao);
       await carregarOfertas(produtoId);
-      setMensagem(`${resultados.length} oferta(s) atualizada(s) no ranking.`);
+
+      const origemMensagem = resposta.veio_do_cache
+        ? "resultado reaproveitado do cache local"
+        : "ofertas atualizadas agora, via Google Shopping e Buscapé";
+      const fontesComFalha = Object.keys(resposta.fontes_com_erro);
+      const avisoFontes =
+        fontesComFalha.length > 0 ? `, atenção, sem resposta de, ${fontesComFalha.join(", ")}` : "";
+
+      setMensagem(
+        `${resposta.resultados.length} oferta(s) encontrada(s), ${origemMensagem}${avisoFontes}.`,
+      );
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível consultar o Buscapé agora.");
+      setErro(e instanceof Error ? e.message : "Não foi possível pesquisar as ofertas agora.");
     } finally {
       setPesquisando(false);
     }
@@ -125,7 +135,8 @@ function ConteudoCalculadora() {
           Calculadora de Compra Inteligente
         </h1>
         <p className="mt-1 text-sm text-ink-500">
-          Ranking de ofertas pelo custo efetivo, considerando Pix, cartão, pontos e cashback.
+          Ranking de ofertas pelo custo efetivo, considerando Pix, cartão, pontos e cashback, a
+          partir do Google Shopping, com o Buscapé como fonte complementar.
         </p>
       </div>
 
@@ -145,9 +156,22 @@ function ConteudoCalculadora() {
               ))}
             </select>
           </div>
-          <button className="btn-primary" onClick={pesquisarAutomaticamente} disabled={pesquisando}>
-            {pesquisando ? "Consultando o Buscapé." : "Atualizar ofertas automaticamente"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="btn-secondary"
+              onClick={() => pesquisarAutomaticamente(false)}
+              disabled={pesquisando}
+            >
+              {pesquisando ? "Consultando." : "Pesquisar ofertas"}
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => pesquisarAutomaticamente(true)}
+              disabled={pesquisando}
+            >
+              {pesquisando ? "Consultando." : "Forçar atualização"}
+            </button>
+          </div>
         </div>
 
         {produtoAtual && (
@@ -189,7 +213,7 @@ function ConteudoCalculadora() {
 
       <Card
         title="Adicionar oferta manualmente"
-        subtitle="Útil para preços de loja física, negociações ou promoções que o Buscapé não encontra."
+        subtitle="Útil para preços de loja física, negociações ou promoções que a busca automática não encontra."
       >
         <OfertaForm cartoes={cartoes} perfil={perfil ?? undefined} aoSalvar={salvarNovaOferta} />
       </Card>

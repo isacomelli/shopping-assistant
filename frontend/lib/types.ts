@@ -59,6 +59,8 @@ export interface Oferta {
   preco_efetivo: number | null;
   url_produto: string | null;
   logo_url: string | null;
+  imagem_produto: string | null;
+  origem: string | null;
   atualizada_em: string | null;
   criado_em: string | null;
   resultado: ResultadoCalculo;
@@ -94,7 +96,15 @@ export interface ResultadoAutomatico {
   confianca_pix_cartao: boolean;
   url_produto: string;
   logo_url: string;
+  imagem_produto: string;
+  origem: string;
   resultado: ResultadoCalculo;
+}
+
+export interface PesquisaAutomaticaResultado {
+  resultados: ResultadoAutomatico[];
+  veio_do_cache: boolean;
+  fontes_com_erro: Record<string, string>;
 }
 
 export interface HistoricoItem {
@@ -104,6 +114,7 @@ export interface HistoricoItem {
   preco_anunciado: number | null;
   preco_efetivo: number | null;
   registrado_em: string | null;
+  origem: string | null;
 }
 
 export interface ParcelaSimulada {

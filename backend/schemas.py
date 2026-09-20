@@ -1,9 +1,7 @@
 """
-modelos pydantic usados nas rotas da api.
+, modelos pydantic usados nas rotas da api.
 
-este arquivo so descreve o formato dos dados que entram e saem pela
-api, a regra de negocio continua inteira em engine/price_engine.py,
-database/db.py e services/.
+, este arquivo so descreve o formato dos dados que entram e saem pela api, a regra de negocio continua inteira em engine/price_engine.py, database/db.py e services/
 """
 
 from typing import Optional
@@ -139,6 +137,8 @@ class OfertaOut(BaseModel):
     preco_efetivo: Optional[float]
     url_produto: Optional[str]
     logo_url: Optional[str] = None
+    imagem_produto: Optional[str] = None
+    origem: Optional[str] = None
     atualizada_em: Optional[str]
     criado_em: Optional[str]
     resultado: ResultadoCalculoOut
@@ -156,12 +156,24 @@ class ResultadoAutomaticoOut(BaseModel):
     confianca_pix_cartao: bool
     url_produto: str
     logo_url: str = ""
+    imagem_produto: str = ""
+    origem: str = "google_shopping"
     resultado: ResultadoCalculoOut
+
+
+class PesquisaAutomaticaOut(BaseModel):
+    """
+    , envelope da resposta da pesquisa automatica, alem do ranking de ofertas, informa se o resultado veio do cache ou de uma consulta nova, e quais fontes, quando houve alguma, falharam durante a busca, sem interromper a pesquisa
+    """
+
+    resultados: list[ResultadoAutomaticoOut]
+    veio_do_cache: bool = False
+    fontes_com_erro: dict[str, str] = Field(default_factory=dict)
 
 
 class CalculoLivreOut(BaseModel):
     """
-    resultado da calculadora livre, a mesma logica de calculo de uma oferta, so que sem estar ligada a nenhum produto nem gravar nada no banco, util para simular qualquer compra do dia a dia.
+    , resultado da calculadora livre, a mesma logica de calculo de uma oferta, so que sem estar ligada a nenhum produto nem gravar nada no banco, util para simular qualquer compra do dia a dia
     """
 
     resultado: ResultadoCalculoOut
@@ -188,6 +200,7 @@ class HistoricoOut(BaseModel):
     preco_anunciado: Optional[float]
     preco_efetivo: Optional[float]
     registrado_em: Optional[str]
+    origem: Optional[str] = None
 
 
 class ParceiroLiveloOut(BaseModel):
