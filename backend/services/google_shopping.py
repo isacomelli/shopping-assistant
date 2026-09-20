@@ -264,7 +264,7 @@ def _buscar_via_api_serper(nome_produto, chave_api):
     resposta = requests.post(
         URL_API_SERPER,
         headers={"X-API-KEY": chave_api, "Content-Type": "application/json"},
-        json={"q": nome_produto, "gl": "br", "hl": "pt-br", "num": 40},
+        json={"q": nome_produto, "gl": "br", "hl": "pt-br", "num": 100},
         timeout=TIMEOUT_API_SEGUNDOS,
     )
     resposta.raise_for_status()

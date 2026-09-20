@@ -1,12 +1,11 @@
 """
-modulo de normalizacao, deduplicacao e filtro de qualidade dos resultados de busca de produtos, usado tanto pelo google shopping quanto pelo buscape antes de qualquer oferta chegar ao motor de calculo.
+modulo de normalizacao, deduplicacao e classificacao de confianca dos resultados de busca de produtos, usado tanto pelo google shopping quanto pelo buscape antes de qualquer oferta chegar ao motor de calculo.
 
-este modulo nao sabe nada sobre livelo, meliuz ou preco efetivo, ele so decide duas coisas, qual e o nome canonico de cada loja, e se um resultado encontrado e realmente o produto pesquisado ou apenas um acessorio, peca de reposicao ou anuncio sem preco, que deveria ser descartado antes de entrar no ranking.
+este modulo nao sabe nada sobre livelo, meliuz ou preco efetivo, ele so decide tres coisas, qual e o nome canonico de cada loja, se um resultado encontrado e claramente outra coisa, tipo um acessorio, peca de reposicao ou item usado, que deveria ser descartado antes de entrar no ranking, e o quanto o nome do produto encontrado bate com o termo pesquisado, para o restante do aplicativo poder mostrar essa confianca em vez de simplesmente esconder a oferta.
 """
 
 import re
 import unicodedata
-from dataclasses import dataclass
 
 # mapa de normalizacao, a chave e qualquer variacao do nome como ela pode aparecer no google shopping ou no buscape, ja normalizada por _chave_normalizada, o valor e o nome canonico que o restante do aplicativo deve usar, inclusive no casamento com parceiros livelo em services/casamento_lojas.py
 MAPA_NORMALIZACAO_LOJAS = {
@@ -68,7 +67,7 @@ MAPA_NORMALIZACAO_LOJAS = {
     "mondial": "Mondial",
 }
 
-# termos que, quando aparecem no nome do produto encontrado, indicam que o resultado e um acessorio, uma peca de reposicao ou um item incompativel com a pesquisa principal, e nao o produto em si
+# termos que, quando aparecem no nome do produto encontrado, indicam que o resultado e claramente outra coisa, um acessorio, uma peca de reposicao ou um item incompativel com a pesquisa principal, e nao o produto pesquisado com informacao a mais. este e o unico descarte de vez que este modulo ainda faz, tudo o resto vira classificacao de confianca em vez de remocao
 TERMOS_RESULTADO_SECUNDARIO = [
     "filtro de agua",
     "filtro para",
@@ -95,6 +94,14 @@ TERMOS_RESULTADO_SECUNDARIO = [
     "para retirada de pecas",
 ]
 
+# sobreposicao minima de palavras em relacao ao termo pesquisado para uma oferta ainda entrar com confianca "parcial", abaixo disso a sobreposicao vira confianca "baixa". nenhum dos dois casos e descartado, so classificado
+SOBREPOSICAO_MINIMA_PARCIAL = 0.34
+
+CONFIANCA_EXATO = "exato"
+CONFIANCA_INFORMACAO_EXTRA = "informacao_extra"
+CONFIANCA_PARCIAL = "parcial"
+CONFIANCA_BAIXA = "baixa"
+
 
 def _remover_acentos(texto):
     forma_normalizada = unicodedata.normalize("NFKD", texto or "")
@@ -109,7 +116,7 @@ def _chave_normalizada(texto):
 
 def padronizar_nome_loja(nome_loja):
     """
-    devolve o nome canonico de uma loja a partir de mapa_normalizacao_lojas, quando a loja nao estiver cadastrada no mapa, devolve o proprio nome recebido, ja com espacos duplicados removidos, para nao quebrar lojas novas que ainda nao entraram na lista
+    devolve o nome canonico de uma loja a partir de MAPA_NORMALIZACAO_LOJAS, quando a loja nao estiver cadastrada no mapa, devolve o proprio nome recebido, ja com espacos duplicados removidos, para nao quebrar lojas novas que ainda nao entraram na lista
     """
     if not nome_loja:
         return nome_loja
@@ -121,31 +128,53 @@ def padronizar_nome_loja(nome_loja):
 
 def _tokens_relevantes(texto):
     """
-    devolve o conjunto de palavras com mais de dois caracteres do texto informado, ja normalizadas, usado para medir sobreposicao entre o termo pesquisado e o nome de um resultado
+    devolve o conjunto de palavras com mais de dois caracteres do texto informado, ja normalizadas, usado tanto para medir sobreposicao entre o termo pesquisado e o nome de um resultado quanto para decidir se o nome traz informacao extra
     """
     chave = _chave_normalizada(texto)
     return {palavra for palavra in chave.split() if len(palavra) > 2}
 
 
-def resultado_parece_produto_principal(nome_produto_encontrado, termo_pesquisado, sobreposicao_minima=0.34):
+def _e_resultado_secundario(nome_produto_encontrado):
     """
-    decide se um resultado encontrado provavelmente e o produto principal pesquisado, e nao um acessorio ou peca de reposicao, combinando dois criterios, a ausencia de termos de TERMOS_RESULTADO_SECUNDARIO no nome do resultado, e uma sobreposicao minima de palavras entre o termo pesquisado e o nome encontrado
+    decide se um nome de produto encontrado e claramente outra coisa, e nao o produto pesquisado com informacao a mais, comparando contra TERMOS_RESULTADO_SECUNDARIO. diferente da classificacao de confianca abaixo, isto continua descartando o resultado de vez, ja que um acessorio, uma peca de reposicao ou um item usado nao e o mesmo produto, so um resultado relacionado
     """
     chave_resultado = _chave_normalizada(nome_produto_encontrado)
     if not chave_resultado:
-        return False
-
-    for termo_secundario in TERMOS_RESULTADO_SECUNDARIO:
-        if termo_secundario in chave_resultado:
-            return False
-
-    tokens_pesquisa = _tokens_relevantes(termo_pesquisado)
-    if not tokens_pesquisa:
         return True
+    return any(termo_secundario in chave_resultado for termo_secundario in TERMOS_RESULTADO_SECUNDARIO)
 
-    tokens_resultado = _tokens_relevantes(nome_produto_encontrado)
-    sobreposicao = len(tokens_pesquisa & tokens_resultado) / len(tokens_pesquisa)
-    return sobreposicao >= sobreposicao_minima
+
+def classificar_confianca_nome(nome_produto_encontrado, termo_pesquisado, sobreposicao_minima=SOBREPOSICAO_MINIMA_PARCIAL):
+    """
+    classifica o quanto o nome do produto encontrado bate com o termo pesquisado, em vez de decidir sozinho se a oferta entra ou nao no ranking. a comparacao ignora maiuscula, minuscula, acento, hifen e pontuacao, atraves de _chave_normalizada, entao "KO-16DI" e "ko 16 di" contam como o mesmo texto.
+
+    CONFIANCA_EXATO, o nome normalizado e identico ao termo pesquisado normalizado.
+    CONFIANCA_INFORMACAO_EXTRA, todas as palavras do termo pesquisado aparecem no nome encontrado, so que o nome traz palavras a mais, o caso mais comum sendo um kit com acessorio de ligacao junto, tipo "... + Acess. Ligação".
+    CONFIANCA_PARCIAL, so parte das palavras do termo aparecem no nome, o suficiente para passar de sobreposicao_minima. cai aqui tanto um nome abreviado, tipo "GN" em vez de "gas natural", quanto uma variacao de modelo proxima, este modulo nao distingue os dois casos.
+    CONFIANCA_BAIXA, pouca ou nenhuma sobreposicao de palavras com o termo pesquisado. mesmo assim a oferta nao e descartada aqui, quem decide o que fazer com uma confianca baixa e a camada de cima, tipicamente a tela.
+    """
+    chave_termo = _chave_normalizada(termo_pesquisado)
+    chave_nome = _chave_normalizada(nome_produto_encontrado)
+
+    if not chave_nome:
+        return CONFIANCA_BAIXA
+    if not chave_termo or chave_nome == chave_termo:
+        return CONFIANCA_EXATO
+
+    tokens_termo = _tokens_relevantes(termo_pesquisado)
+    tokens_nome = _tokens_relevantes(nome_produto_encontrado)
+
+    if tokens_termo and tokens_termo.issubset(tokens_nome):
+        return CONFIANCA_INFORMACAO_EXTRA
+
+    if not tokens_termo:
+        return CONFIANCA_EXATO
+
+    sobreposicao = len(tokens_termo & tokens_nome) / len(tokens_termo)
+    if sobreposicao >= sobreposicao_minima:
+        return CONFIANCA_PARCIAL
+
+    return CONFIANCA_BAIXA
 
 
 def _chave_deduplicacao(oferta):
@@ -162,14 +191,17 @@ def _chave_deduplicacao(oferta):
 
 def normalizar_e_filtrar_ofertas(ofertas, termo_pesquisado):
     """
-    aplica, nesta ordem, a padronizacao do nome da loja de cada oferta, o filtro de resultados secundarios com base no nome do produto encontrado, e a deduplicacao por url ou por loja mais preco, devolvendo a lista final pronta para seguir para o enriquecimento com livelo e meliuz
+    aplica, nesta ordem, a padronizacao do nome da loja de cada oferta, o descarte dos resultados claramente secundarios, tipo acessorio ou peca de reposicao, a classificacao de confianca do nome contra o termo pesquisado, gravada na propria oferta em oferta.confianca_nome, e por ultimo a deduplicacao por url ou por loja mais preco.
+
+    nenhuma oferta e mais descartada so por o nome nao bater 100% com o termo pesquisado, ela entra no ranking do mesmo jeito, so que marcada com a confianca calculada, quem decide o que fazer com uma confianca baixa e a camada de cima
     """
     ofertas_filtradas = []
     for oferta in ofertas:
         oferta.loja = padronizar_nome_loja(oferta.loja)
         nome_produto_encontrado = getattr(oferta, "nome_produto", "") or oferta.loja
-        if not resultado_parece_produto_principal(nome_produto_encontrado, termo_pesquisado):
+        if _e_resultado_secundario(nome_produto_encontrado):
             continue
+        oferta.confianca_nome = classificar_confianca_nome(nome_produto_encontrado, termo_pesquisado)
         ofertas_filtradas.append(oferta)
 
     vistas = set()
