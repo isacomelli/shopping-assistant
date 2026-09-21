@@ -117,14 +117,14 @@ class OfertaBuscape:
     valor_parcela: float = 0.0
     parcelas_sem_juros: bool = False
 
-    # so para depuracao, marca se esta oferta veio da aba normal ou
-    # da aba anonima, nao muda nenhum calculo
+    # so para depuracao, marca se esta oferta veio da aba normal ou da aba anonima, nao muda nenhum calculo
     guia: str = ""
 
+    # nivel de confianca entre o nome do produto encontrado e o termo pesquisado, preenchido por services/normalizacao_lojas.py, fica vazio ate esse ponto do pipeline
+    confianca_nome: str = ""
+
     def __post_init__(self):
-        # todo valor monetario deste modulo fica sempre com 2 casas
-        # decimais, para nao aparecer numero tipo 1999.999999999998
-        # em nenhuma tela
+        # todo valor monetario deste modulo fica sempre com 2 casas decimais, para nao aparecer numero tipo 1999.999999999998 em nenhuma tela
         self.preco = round(float(self.preco), 2)
         self.preco_pix = round(float(self.preco_pix), 2)
         self.preco_cartao = round(float(self.preco_cartao), 2)
@@ -566,3 +566,4 @@ if __name__ == "__main__":
     print(f"{len(resultado)} ofertas encontradas")
     for oferta in resultado:
         print(oferta)
+        

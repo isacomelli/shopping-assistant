@@ -1,9 +1,7 @@
 """
 ponto de entrada da api do assistente de compras da reforma.
 
-roda com, a partir da pasta backend,
-
-    uvicorn main:app --reload --port 8000
+roda com, a partir da pasta backend: uvicorn main:app --reload --port 8000
 
 a documentacao interativa fica em http://localhost:8000/docs
 """

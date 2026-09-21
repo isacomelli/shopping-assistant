@@ -70,16 +70,13 @@ class ResultadoOferta:
     loja: str
     tipo: str
     preco_anunciado: float
-
     valor_pontos_pix: float
     cashback_valor_pix: float
     preco_efetivo_pix: float
-
     rendimento_parcelamento: float
     valor_pontos_cartao: float
     cashback_valor_cartao: float
     preco_efetivo_cartao: float
-
     melhor_forma_pagamento: str
     preco_efetivo: float
     economia_vs_anunciado: float

@@ -35,8 +35,7 @@ SELETORES_BANNER_COOKIES = [
     "button[aria-label*='aceitar' i]",
 ]
 
-# cobre formatos como "ate 8% de cashback", "8% de volta", "8% de
-# cashback"
+# cobre formatos como "ate 8% de cashback", "8% de volta", "8% de cashback"
 PADRAO_CASHBACK = re.compile(
     r"(?:até\s*)?([\d]+(?:[.,]\d+)?)\s*%\s*(?:de\s*)?(?:cashback|de volta|de retorno)",
     re.IGNORECASE,
@@ -145,9 +144,7 @@ def buscar_cashback_por_loja(nome_loja, timeout_ms=45000, headless=True, salvar_
             loja_pesquisada=nome_loja,
             encontrado=False,
             url_consultada=url_usada,
-            mensagem=(
-                "nenhum percentual de cashback foi encontrado para esta loja, ela pode nao ser parceira do meliuz, ou a pagina pode ter mudado"
-            ),
+            mensagem="nenhum percentual de cashback foi encontrado para esta loja, ela pode nao ser parceira do meliuz, ou a pagina pode ter mudado",
         )
 
     cashback_pct = float(encontrado.group(1).replace(",", "."))

@@ -32,3 +32,14 @@ export function obterLogoDaLoja(url: string | null | undefined): string | null {
   if (!dominio || dominio.endsWith("google.com")) return null;
   return `https://www.google.com/s2/favicons?domain=${dominio}&sz=64`;
 }
+
+const ROTULOS_CONFIANCA_NOME: Record<string, string> = {
+  informacao_extra: "Nome traz item a mais (kit, acessório)",
+  parcial: "Nome bate parcialmente com a pesquisa",
+  baixa: "Nome pouco parecido com a pesquisa",
+};
+
+export function rotuloConfiancaNome(confiancaNome: string | null | undefined): string | null {
+  if (!confiancaNome || confiancaNome === "exato") return null;
+  return ROTULOS_CONFIANCA_NOME[confiancaNome] ?? null;
+}

@@ -143,3 +143,4 @@ def test_simular_parcelamento_gera_uma_linha_por_quantidade_de_parcelas():
     assert resultado[0]["parcelas"] == 1
     assert resultado[-1]["parcelas"] == 12
     assert resultado[0]["custo_efetivo"] == 779
+    

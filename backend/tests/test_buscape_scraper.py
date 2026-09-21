@@ -8,10 +8,7 @@ from scrapers.buscape import _determinar_precos_pix_cartao
 
 def test_sem_parcelamento_reconhecido_usa_mesmo_valor_para_pix_e_cartao():
     """
-    quando o cartao de resultado nao trouxe nenhum parcelamento
-    reconhecivel, antes o pix e o cartao ficavam zerados, o que fazia
-    o preco efetivo tambem zerar no ranking, ver engine/price_engine.py.
-    agora os dois recebem o proprio preco anunciado.
+    quando o cartao de resultado nao trouxe nenhum parcelamento reconhecivel, antes o pix e o cartao ficavam zerados, o que fazia o preco efetivo tambem zerar no ranking, ver engine/price_engine.py. agora os dois recebem o proprio preco anunciado.
     """
     preco_pix, preco_cartao, confianca = _determinar_precos_pix_cartao(
         preco=1999.0, parcelas=1, valor_parcela=0.0,

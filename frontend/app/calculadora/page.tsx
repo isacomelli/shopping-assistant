@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-
 import { Card } from "@/components/Card";
 import { OfertaForm } from "@/components/OfertaForm";
 import { RankingCard } from "@/components/RankingCard";

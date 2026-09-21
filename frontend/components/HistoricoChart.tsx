@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from "recharts";
 import { formatarMoeda } from "@/lib/format";
 
 export function HistoricoChart({ pontos }: { pontos: { data: string; preco: number }[] }) {

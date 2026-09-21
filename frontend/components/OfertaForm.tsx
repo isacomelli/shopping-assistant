@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-
 import type { Cartao, OfertaPayload, Perfil } from "@/lib/types";
 
 const TIPOS_OFERTA = ["online", "parceiro de pontos", "loja física", "negociação"];

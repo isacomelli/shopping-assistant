@@ -34,11 +34,7 @@ def oferta_da_linha(linha_oferta, config):
 
 def oferta_do_payload(payload, config):
     """
-    monta um Oferta do motor de calculo a partir do corpo recebido nas
-    rotas de criar ou editar oferta manualmente. o formulario manual
-    nao pede um preco bruto separado, entao preco cai de volta para o
-    preco no cartao, do mesmo jeito que oferta_da_linha faz quando o
-    valor salvo esta vazio.
+    monta um Oferta do motor de calculo a partir do corpo recebido nas rotas de criar ou editar oferta manualmente. o formulario manual nao pede um preco bruto separado, entao preco cai de volta para o preco no cartao, do mesmo jeito que oferta_da_linha faz quando o valor salvo esta vazio.
     """
     return Oferta(
         loja=payload.loja.strip(),
@@ -60,9 +56,7 @@ def oferta_do_payload(payload, config):
 
 def resultado_como_dict(resultado):
     """
-    converte o dataclass ResultadoOferta num dict pronto para entrar
-    num schema de resposta, descartando os campos que ja aparecem em
-    outro lugar do payload, tipo loja, tipo e preco_anunciado.
+    converte o dataclass ResultadoOferta num dict pronto para entrar num schema de resposta, descartando os campos que ja aparecem em outro lugar do payload, tipo loja, tipo e preco_anunciado.
     """
     dados = asdict(resultado)
     for chave in ("loja", "tipo", "preco_anunciado"):

@@ -5,11 +5,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote_plus, unquote, urlparse
-
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
-
 from services.normalizacao_lojas import normalizar_e_filtrar_ofertas
 
 # a aba Produtos do Google usa udm=28, o parâmetro tbm=shop fica como alternativa caso o formato antigo volte a ser servido
@@ -32,9 +30,7 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
 
-SCRIPT_ANTI_DETECCAO = """
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-"""
+SCRIPT_ANTI_DETECCAO = "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
 
 SELETORES_BANNER_COOKIES = [
     "button:has-text('Aceitar tudo')",
@@ -83,6 +79,9 @@ class OfertaGoogleShopping:
 
     # cashback do Méliuz exibido pelo próprio Google no cartão, quando existir
     cashback_pct: float = 0.0
+
+    # nivel de confianca entre o nome do produto encontrado e o termo pesquisado, preenchido por services/normalizacao_lojas.py, fica vazio ate esse ponto do pipeline
+    confianca_nome: str = ""
 
     origem: str = "google_shopping"
 

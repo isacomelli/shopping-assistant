@@ -23,7 +23,7 @@ from services.casamento_lojas import (
     encontrar_parceiro_equivalente,
     obter_url_logo_parceiro,
 )
-from services.normalizacao_lojas import normalizar_e_filtrar_ofertas
+from services.normalizacao_lojas import CONFIANCA_EXATO, normalizar_e_filtrar_ofertas
 from engine.price_engine import Oferta, ResultadoOferta, calcular_oferta
 
 # valores usados apenas quando esta funcao e chamada diretamente sem informar o perfil, tipo nos testes, em producao, routers/ofertas.py sempre repassa os valores cadastrados em user_settings
@@ -47,6 +47,8 @@ class ResultadoAutomatico:
     logo_url: str = ""
     imagem_produto: str = ""
     origem: str = "google_shopping"
+    # nivel de confianca entre o nome do produto encontrado e o termo pesquisado, vindo direto da oferta original ja classificada por normalizar_e_filtrar_ofertas
+    confianca_nome: str = CONFIANCA_EXATO
 
 
 def buscar_parceiro_para_loja(nome_loja, parceiros_conhecidos=None):
@@ -222,6 +224,7 @@ def pesquisar_produto_automaticamente(nome_produto, rendimento_mensal,
                 logo_url=oferta.logo_url,
                 imagem_produto=getattr(oferta_encontrada, "imagem_produto", ""),
                 origem=getattr(oferta_encontrada, "origem", "google_shopping"),
+                confianca_nome=getattr(oferta_encontrada, "confianca_nome", CONFIANCA_EXATO),
             )
         )
 

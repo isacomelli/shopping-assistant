@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import { Card } from "@/components/Card";
 import { HistoricoChart } from "@/components/HistoricoChart";
 import { api } from "@/lib/api";
@@ -175,13 +174,11 @@ export default function PaginaHistorico() {
             <p className="text-sm">
               {menorRecente < mediaRecente ? (
                 <span className="text-brand-700">
-                  Vale comprar agora, está {((1 - menorRecente / mediaRecente) * 100).toFixed(1)}% abaixo
-                  da média dos últimos 30 dias.
+                  Vale comprar agora, está {((1 - menorRecente / mediaRecente) * 100).toFixed(1)}% abaixo da média dos últimos 30 dias.
                 </span>
               ) : menorRecente > mediaRecente ? (
                 <span className="text-alert-500">
-                  Está {((menorRecente / mediaRecente - 1) * 100).toFixed(1)}% acima da média dos
-                  últimos 30 dias, talvez valha esperar.
+                  Está {((menorRecente / mediaRecente - 1) * 100).toFixed(1)}% acima da média dos últimos 30 dias, talvez valha esperar.
                 </span>
               ) : (
                 <span className="text-ink-500">Preço atual está na média dos últimos 30 dias.</span>

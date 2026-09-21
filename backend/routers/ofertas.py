@@ -54,6 +54,7 @@ def _resultado_automatico_para_dict(item, resultado):
         "parceiro_encontrado": item.parceiro_encontrado,
         "parceiro_nome": item.parceiro_nome,
         "confianca_pix_cartao": item.confianca_pix_cartao,
+        "confianca_nome": item.confianca_nome,
         "url_produto": item.url_produto,
         "logo_url": item.logo_url,
         "imagem_produto": item.imagem_produto,
@@ -107,6 +108,7 @@ def _executar_pesquisa_e_gravar(produto, config):
             logo_url=item.logo_url,
             imagem_produto=item.imagem_produto,
             origem=item.origem,
+            confianca_nome=item.confianca_nome,
         )
         db.registrar_historico(
             produto["id"], oferta.loja, oferta.preco_cartao, resultado.preco_efetivo,

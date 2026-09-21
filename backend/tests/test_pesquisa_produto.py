@@ -6,11 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services import pesquisa_produto
 from services.google_shopping import ErroScraperGoogleShopping
-from services.pesquisa_produto import (
-    buscar_ofertas_combinadas,
-    montar_oferta_a_partir_do_buscape,
-    pesquisar_produto_automaticamente,
-)
+from services.pesquisa_produto import buscar_ofertas_combinadas, montar_oferta_a_partir_do_buscape, pesquisar_produto_automaticamente
 
 
 @dataclass
@@ -267,10 +263,7 @@ def test_pesquisar_produto_automaticamente_combina_fontes_e_marca_origem(monkeyp
 
 def test_buscar_parceiro_para_loja_prioriza_parceiros_conhecidos_informado(monkeypatch):
     """
-    quando parceiros_conhecidos e informado, tipicamente vindo da tabela livelo_parceiros
-    do banco ja atualizada pelo botao "atualizar parceiros da livelo", ele deve ganhar de
-    PARCEIROS_LIVELO_CONHECIDOS, mesmo que o mesmo nome exista nos dois, ver
-    routers/ofertas.py _parceiros_para_pesquisa_automatica.
+    quando parceiros_conhecidos e informado, tipicamente vindo da tabela livelo_parceiros do banco ja atualizada pelo botao "atualizar parceiros da livelo", ele deve ganhar de PARCEIROS_LIVELO_CONHECIDOS, mesmo que o mesmo nome exista nos dois, ver routers/ofertas.py _parceiros_para_pesquisa_automatica.
     """
     monkeypatch.setattr(pesquisa_produto, "PARCEIROS_LIVELO_CONHECIDOS", PARCEIROS_FALSOS)
     parceiros_do_banco = [

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import { Card } from "@/components/Card";
 import { api } from "@/lib/api";
 import type { Cartao, Perfil } from "@/lib/types";
@@ -22,7 +21,6 @@ export default function PaginaPerfil() {
   const [buscandoCotacao, setBuscandoCotacao] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-
   const [nomeCartao, setNomeCartao] = useState("");
   const [pontosPorDolarCartao, setPontosPorDolarCartao] = useState(0);
   const [cashbackCartao, setCashbackCartao] = useState(0);

@@ -1,51 +1,28 @@
 """
-script auxiliar para testar os scrapers fora do streamlit, direto pelo
-terminal, sem precisar abrir o app inteiro so pra ver o que cada
-scraper esta trazendo.
+script auxiliar para testar os scrapers fora do streamlit, direto pelo terminal, sem precisar abrir o app inteiro so pra ver o que cada scraper esta trazendo.
 
-exemplo de uso, pesquisar um produto no buscape, com o navegador
-visivel na tela,
-
+exemplo de uso, pesquisar um produto no buscape, com o navegador visivel na tela:
 python debug_scraper.py buscape "geladeira electrolux tf39" --mostrar-navegador
 
-exemplo de uso, consultar um parceiro no meliuz, em modo headless,
-
+exemplo de uso, consultar um parceiro no meliuz, em modo headless:
 python debug_scraper.py meliuz "Fast Shop"
 
-exemplo de uso, atualizar a lista de parceiros da livelo, so no
-terminal, sem gravar no banco,
-
+exemplo de uso, atualizar a lista de parceiros da livelo, so no terminal, sem gravar no banco:
 python debug_scraper.py livelo "qualquer coisa"
 
-exemplo de uso, atualizar a lista de parceiros da livelo e gravar
-direto na tabela livelo_parceiros, sem precisar da api rodando,
-
+exemplo de uso, atualizar a lista de parceiros da livelo e gravar direto na tabela livelo_parceiros, sem precisar da api rodando:
 python debug_scraper.py livelo "qualquer coisa" --salvar-banco
 
-exemplo de uso, reprocessar um html do buscape ja salvo em disco, sem
-abrir o navegador, util depois de ajustar os seletores em
-scrapers/buscape.py,
-
+exemplo de uso, reprocessar um html do buscape ja salvo em disco, sem abrir o navegador, util depois de ajustar os seletores em scrapers/buscape.py:
 python debug_scraper.py buscape "geladeira" --reparsear scrapers/ultimo_html_buscape.html
 
-o termo da livelo hoje nao e usado pelo scraper, que le a lista
-inteira de parceiros, mas o argumento continua obrigatorio para manter
-a mesma linha de comando dos outros scrapers, caso o scraper da livelo
-passe a aceitar um termo de busca no futuro.
+o termo da livelo hoje nao e usado pelo scraper, que le a lista inteira de parceiros, mas o argumento continua obrigatorio para manter a mesma linha de comando dos outros scrapers, caso o scraper da livelo passe a aceitar um termo de busca no futuro.
 
-por padrao, o resultado aparece formatado no terminal e tambem e salvo
-em debug_output, como json, para dar para comparar pesquisas
-diferentes depois, ou colar o retorno em algum lugar para analisar com
-calma. use --sem-salvar se so quiser ver no terminal.
+por padrao, o resultado aparece formatado no terminal e tambem e salvo em debug_output, como json, para dar para comparar pesquisas diferentes depois, ou colar o retorno em algum lugar para analisar com calma. use --sem-salvar se so quiser ver no terminal.
 
-este script nao muda nenhuma logica dos scrapers, ele so chama as
-mesmas funcoes que o app usa e imprime o retorno de um jeito mais
-facil de ler.
+este script nao muda nenhuma logica dos scrapers, ele so chama as mesmas funcoes que o app usa e imprime o retorno de um jeito mais facil de ler.
 
-exemplo de uso, reprocessar um html da livelo ja salvo em disco, sem
-abrir o navegador, util depois de ajustar as expressoes regulares em
-scrapers/livelo.py,
-
+exemplo de uso, reprocessar um html da livelo ja salvo em disco, sem abrir o navegador, util depois de ajustar as expressoes regulares em scrapers/livelo.py:
 python debug_scraper.py livelo "qualquer coisa" --reparsear scrapers/ultimo_html_livelo.html
 """
 
@@ -57,14 +34,17 @@ from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict
 from tabulate import tabulate
+from scrapers.buscape import ErroScraperBuscape, buscar_ofertas_buscape, parsear_html_buscape
+from scrapers.livelo import ErroScraperLivelo, buscar_parceiros_livelo, parsear_html_livelo
+from scrapers.meliuz import buscar_cashback_por_loja
+
 
 PASTA_SAIDA = Path(__file__).parent / "debug_output"
 
 
 def _para_dict(objeto):
     """
-    converte o retorno de um scraper, seja um dataclass unico ou uma
-    lista deles, para algo que da para serializar em json.
+    converte o retorno de um scraper, seja um dataclass unico ou uma lista deles, para algo que da para serializar em json.
     """
     if dataclasses.is_dataclass(objeto):
         return dataclasses.asdict(objeto)
@@ -73,7 +53,7 @@ def _para_dict(objeto):
     return objeto
 
 
-def _slug(texto, limite=40):
+def _slug(texto, limite=100):
     letras = [c if c.isalnum() else "_" for c in texto.lower().strip()]
     slug = "".join(letras)
     while "__" in slug:
@@ -90,8 +70,6 @@ def _salvar_json(nome_scraper, termo, dados):
 
 
 def rodar_buscape(termo, headless):
-    from scrapers.buscape import ErroScraperBuscape, buscar_ofertas_buscape
-
     try:
         ofertas = buscar_ofertas_buscape(termo, headless=headless)
     except ErroScraperBuscape as erro:
@@ -108,18 +86,13 @@ def rodar_buscape(termo, headless):
 
 def rodar_buscape_de_arquivo(caminho_html):
     """
-    reprocessa um html do buscape ja salvo em disco, sem abrir o
-    navegador, util para ajustar os seletores em scrapers/buscape.py
-    rapidamente, testando varias vezes em cima do mesmo html.
+    reprocessa um html do buscape ja salvo em disco, sem abrir o navegador, util para ajustar os seletores em scrapers/buscape.py rapidamente, testando varias vezes em cima do mesmo html.
     """
-    from scrapers.buscape import parsear_html_buscape
-
     html = Path(caminho_html).read_text(encoding="utf-8")
     cartoes, ofertas = parsear_html_buscape(html)
 
     print(f"{len(cartoes)} cartoes de resultado encontrados no html")
     print(f"{len(ofertas)} ofertas com preco reconhecido\n")
-
     print(tabulate(
             [{k: v for k, v in asdict(o).items() if k not in ("url_produto", 'nome_produto')} for o in ofertas],
             headers="keys",
@@ -130,8 +103,6 @@ def rodar_buscape_de_arquivo(caminho_html):
 
 
 def rodar_livelo(termo, headless, salvar_banco=False):
-    from scrapers.livelo import ErroScraperLivelo, buscar_parceiros_livelo
-
     try:
         parceiros = buscar_parceiros_livelo(headless=headless)
     except ErroScraperLivelo as erro:
@@ -161,15 +132,8 @@ def rodar_livelo(termo, headless, salvar_banco=False):
 
 def rodar_livelo_de_arquivo(caminho_html):
     """
-    reprocessa um html da livelo ja salvo em disco, sem abrir o
-    navegador, util para ajustar as expressoes regulares em
-    scrapers/livelo.py rapidamente, testando varias vezes em cima do
-    mesmo html, por exemplo scrapers/ultimo_html_livelo.html, salvo
-    apos toda coleta, ou scrapers/debug_livelo.html, salvo so quando
-    nenhum parceiro foi reconhecido.
+    reprocessa um html da livelo ja salvo em disco, sem abrir o navegador, util para ajustar as expressoes regulares em scrapers/livelo.py rapidamente, testando varias vezes em cima do mesmo html, por exemplo scrapers/ultimo_html_livelo.html, salvo apos toda coleta, ou scrapers/debug_livelo.html, salvo so quando nenhum parceiro foi reconhecido.
     """
-    from scrapers.livelo import parsear_html_livelo
-
     html = Path(caminho_html).read_text(encoding="utf-8")
     parceiros = parsear_html_livelo(html)
 
@@ -184,8 +148,6 @@ def rodar_livelo_de_arquivo(caminho_html):
 
 
 def rodar_meliuz(termo, headless):
-    from scrapers.meliuz import buscar_cashback_por_loja
-
     resultado = buscar_cashback_por_loja(termo, headless=headless)
     if resultado.encontrado:
         print(
@@ -223,19 +185,12 @@ def main():
     parser.add_argument(
         "--reparsear",
         metavar="ARQUIVO_HTML",
-        help=(
-            "so para o buscape, em vez de abrir o navegador, reprocessa um html "
-            "ja salvo em disco, por exemplo scrapers/ultimo_html_buscape.html. "
-            "util para ajustar os seletores sem gastar tempo com rede"
-        ),
+        help="so para o buscape, em vez de abrir o navegador, reprocessa um html ja salvo em disco, por exemplo scrapers/ultimo_html_buscape.html. util para ajustar os seletores sem gastar tempo com rede",
     )
     parser.add_argument(
         "--salvar-banco",
         action="store_true",
-        help=(
-            "so para o livelo, grava o resultado do scraper direto na tabela "
-            "livelo_parceiros do banco, sem precisar da api rodando"
-        ),
+        help="so para o livelo, grava o resultado do scraper direto na tabela livelo_parceiros do banco, sem precisar da api rodando"
     )
     args = parser.parse_args()
 

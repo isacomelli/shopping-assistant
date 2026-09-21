@@ -16,14 +16,12 @@ class PerfilOut(BaseModel):
     percentual_bonus_transferencia_padrao: float
     parcelas_padrao: int
 
-
 class PerfilUpdate(BaseModel):
     rendimento_mensal: float
     cotacao_dolar: float
     valor_milheiro_padrao: float
     percentual_bonus_transferencia_padrao: float
     parcelas_padrao: int
-
 
 class CotacaoDolarOut(BaseModel):
     cotacao_dolar: Optional[float]
@@ -37,7 +35,6 @@ class CartaoOut(BaseModel):
     nome: str
     pontos_por_dolar: float
     cashback_pct: float
-
 
 class CartaoCreate(BaseModel):
     nome: str
@@ -58,20 +55,17 @@ class ProdutoOut(BaseModel):
     melhor_preco_efetivo: Optional[float] = None
     melhor_loja: Optional[str] = None
 
-
 class ProdutoCreate(BaseModel):
     nome: str
     categoria: str = ""
     orcamento: float = 0.0
     preco_alvo: float = 0.0
 
-
 class ProdutoUpdate(BaseModel):
     nome: str
     categoria: str = ""
     orcamento: float = 0.0
     preco_alvo: float = 0.0
-
 
 class ProdutoStatusUpdate(BaseModel):
     status: str
@@ -96,10 +90,8 @@ class OfertaCreate(BaseModel):
     validade: str = ""
     confianca: str = "confirmada"
 
-
 class OfertaUpdate(OfertaCreate):
     pass
-
 
 class ResultadoCalculoOut(BaseModel):
     valor_pontos_pix: float
@@ -112,7 +104,6 @@ class ResultadoCalculoOut(BaseModel):
     melhor_forma_pagamento: str
     preco_efetivo: float
     economia_vs_anunciado: float
-
 
 class OfertaOut(BaseModel):
     id: int
@@ -137,10 +128,10 @@ class OfertaOut(BaseModel):
     logo_url: Optional[str] = None
     imagem_produto: Optional[str] = None
     origem: Optional[str] = None
+    confianca_nome: str = ""
     atualizada_em: Optional[str]
     criado_em: Optional[str]
     resultado: ResultadoCalculoOut
-
 
 class ResultadoAutomaticoOut(BaseModel):
     loja: str
@@ -152,13 +143,13 @@ class ResultadoAutomaticoOut(BaseModel):
     parceiro_encontrado: bool
     parceiro_nome: Optional[str]
     confianca_pix_cartao: bool
+    confianca_nome: str = "exato"
     url_produto: str
     logo_url: str = ""
     imagem_produto: str = ""
     origem: str = "google_shopping"
     resultado: ResultadoCalculoOut
-
-
+    
 class PesquisaAutomaticaOut(BaseModel):
     """
     envelope da resposta da pesquisa automatica, alem do ranking de ofertas, informa se o resultado veio do cache ou de uma consulta nova, e quais fontes, quando houve alguma, falharam durante a busca, sem interromper a pesquisa
@@ -168,7 +159,6 @@ class PesquisaAutomaticaOut(BaseModel):
     veio_do_cache: bool = False
     fontes_com_erro: dict[str, str] = Field(default_factory=dict)
 
-
 class CalculoLivreOut(BaseModel):
     """
     resultado da calculadora livre, a mesma logica de calculo de uma oferta, so que sem estar ligada a nenhum produto nem gravar nada no banco, util para simular qualquer compra do dia a dia
@@ -176,13 +166,11 @@ class CalculoLivreOut(BaseModel):
 
     resultado: ResultadoCalculoOut
 
-
 class SimulacaoParcelamentoIn(BaseModel):
     preco_pix: float
     preco_cartao: float
     rendimento_mensal: float
     max_parcelas: int = Field(default=12, le=36)
-
 
 class ParcelaSimuladaOut(BaseModel):
     parcelas: int
@@ -199,7 +187,6 @@ class HistoricoOut(BaseModel):
     preco_efetivo: Optional[float]
     registrado_em: Optional[str]
     origem: Optional[str] = None
-
 
 class ParceiroLiveloOut(BaseModel):
     nome: str

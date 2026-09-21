@@ -209,6 +209,9 @@ def inicializar_banco():
             "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
             (USER_ID_PADRAO,),
         )
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "imagem_produto TEXT")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "origem TEXT NOT NULL DEFAULT 'google_shopping'")
+        _adicionar_coluna_se_nao_existir(conn, "ofertas", "confianca_nome TEXT NOT NULL DEFAULT ''")
 
 
 # configuracoes
@@ -221,8 +224,7 @@ def obter_configuracoes():
         return dict(linha)
 
 
-def salvar_configuracoes(rendimento_mensal, cotacao_dolar, valor_milheiro_padrao,
-                          percentual_bonus_transferencia_padrao, parcelas_padrao):
+def salvar_configuracoes(rendimento_mensal, cotacao_dolar, valor_milheiro_padrao, percentual_bonus_transferencia_padrao, parcelas_padrao):
     """
     salva o perfil financeiro, o campo de pontos por dolar padrao do cartao nao entra mais aqui, porque cada cartao cadastrado ja tem sua propria taxa de pontos por dolar, um padrao global so duplicava essa informacao sem servir pra nada, percentual_bonus_transferencia_padrao e parcelas_padrao sao os valores usados pela pesquisa automatica quando nenhuma fonte confirma um parcelamento proprio da loja, ver services/pesquisa_produto.py
     """
@@ -341,7 +343,7 @@ def listar_ofertas_por_produto(produto_id):
         return [dict(linha) for linha in linhas]
 
 
-def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url, imagem_produto="", origem="google_shopping"):
+def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url, imagem_produto="", origem="google_shopping", confianca_nome=""):
     cursor = conn.execute(
         """
         INSERT INTO ofertas (
@@ -349,43 +351,43 @@ def _inserir_oferta(conn, produto_id, loja, tipo, preco_pix, preco_cartao, parce
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom,
             observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url,
-            imagem_produto, origem
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            imagem_produto, origem, confianca_nome
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             produto_id, USER_ID_PADRAO, loja, tipo, preco_pix, preco_cartao, parcelas,
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom,
             observacoes, validade, confianca, preco_efetivo, preco, url_produto, logo_url,
-            imagem_produto, origem,
+            imagem_produto, origem, confianca_nome,
         ),
     )
     return cursor.lastrowid
 
 
-def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0, url_produto="", logo_url="", imagem_produto="", origem="manual"):
+def adicionar_oferta(produto_id, loja, tipo, preco_pix, preco_cartao, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, preco=0.0, url_produto="", logo_url="", imagem_produto="", origem="manual", confianca_nome=""):
     """
-    cadastra uma oferta a mao, tipicamente vinda do formulario manual da calculadora, devolve o id da linha criada, para o chamador poder linkar essa oferta a um registro de historico, logo_url e imagem_produto ficam vazias por padrao, ja que o formulario manual nao pesquisa nenhuma fonte, so a pesquisa automatica preenche esses campos
+    cadastra uma oferta a mao, tipicamente vinda do formulario manual da calculadora, devolve o id da linha criada, para o chamador poder linkar essa oferta a um registro de historico, logo_url e imagem_produto ficam vazias por padrao, ja que o formulario manual nao pesquisa nenhuma fonte, so a pesquisa automatica preenche esses campos, o mesmo vale para confianca_nome, que so faz sentido para uma oferta que passou pela classificacao de nome em services/normalizacao_lojas.py
     """
     with conexao() as conn:
         return _inserir_oferta(
             conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-            confianca, preco_efetivo, preco, url_produto, logo_url, imagem_produto, origem,
+            confianca, preco_efetivo, preco, url_produto, logo_url, imagem_produto, origem, confianca_nome,
         )
 
 
-def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto, logo_url, imagem_produto="", origem="google_shopping"):
+def registrar_oferta_pesquisa(produto_id, loja, tipo, preco_pix, preco_cartao, preco, parcelas, pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia, valor_milheiro, cashback_pct, frete, cupom, observacoes, validade, confianca, preco_efetivo, url_produto, logo_url, imagem_produto="", origem="google_shopping", confianca_nome=""):
     """
-    cadastra uma oferta encontrada pela pesquisa automatica, mesma tabela da oferta manual, so que sempre com preco, url_produto e origem preenchidos, devolve o id da linha criada, logo_url vem do parceiro livelo casado pela propria pesquisa, ver services/pesquisa_produto.py, e fica vazia quando nenhum parceiro casar, origem indica de qual fonte a oferta veio, google_shopping ou buscape
+    cadastra uma oferta encontrada pela pesquisa automatica, mesma tabela da oferta manual, so que sempre com preco, url_produto e origem preenchidos, devolve o id da linha criada, logo_url vem do parceiro livelo casado pela propria pesquisa, ver services/pesquisa_produto.py, e fica vazia quando nenhum parceiro casar, origem indica de qual fonte a oferta veio, google_shopping ou buscape, confianca_nome vem da classificacao feita em services/normalizacao_lojas.py, comparando o nome do produto encontrado com o termo pesquisado
     """
     with conexao() as conn:
         return _inserir_oferta(
             conn, produto_id, loja, tipo, preco_pix, preco_cartao, parcelas,
             pontos_por_real, pontos_por_dolar_cartao, percentual_bonus_transferencia,
             valor_milheiro, cashback_pct, frete, cupom, observacoes, validade,
-            confianca, preco_efetivo, preco, url_produto, logo_url, imagem_produto, origem,
+            confianca, preco_efetivo, preco, url_produto, logo_url, imagem_produto, origem, confianca_nome,
         )
 
 

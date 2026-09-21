@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import { Card } from "@/components/Card";
 import { api } from "@/lib/api";
 import { formatarMoeda } from "@/lib/format";
@@ -19,7 +18,6 @@ export default function PaginaWishlist() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [editandoId, setEditandoId] = useState<number | null>(null);
-
   const [nome, setNome] = useState("");
   const [categoria, setCategoria] = useState("");
   const [precoAlvo, setPrecoAlvo] = useState(0);

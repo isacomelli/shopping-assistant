@@ -61,6 +61,7 @@ export interface Oferta {
   logo_url: string | null;
   imagem_produto: string | null;
   origem: string | null;
+  confianca_nome: string;
   atualizada_em: string | null;
   criado_em: string | null;
   resultado: ResultadoCalculo;
@@ -94,6 +95,7 @@ export interface ResultadoAutomatico {
   parceiro_encontrado: boolean;
   parceiro_nome: string | null;
   confianca_pix_cartao: boolean;
+  confianca_nome: string;
   url_produto: string;
   logo_url: string;
   imagem_produto: string;

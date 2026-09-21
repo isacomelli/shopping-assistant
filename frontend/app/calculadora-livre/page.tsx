@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import { Card } from "@/components/Card";
 import { OfertaForm } from "@/components/OfertaForm";
 import { ResultadoDetalhado } from "@/components/ResultadoDetalhado";
@@ -44,8 +43,7 @@ export default function PaginaCalculadoraLivre() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink-900">Calculadora livre</h1>
         <p className="mt-1 text-sm text-ink-500">
-          Simule o custo efetivo de qualquer compra do dia a dia, sem precisar cadastrar um produto na
-          wishlist e sem gravar nada no histórico.
+          Simule o custo efetivo de qualquer compra do dia a dia, sem precisar cadastrar um produto na wishlist e sem gravar nada no histórico.
         </p>
       </div>
 

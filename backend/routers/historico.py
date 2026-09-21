@@ -3,9 +3,7 @@ rotas do historico de precos de um produto.
 """
 
 from fastapi import APIRouter, HTTPException
-
 from database import db
-
 from schemas import HistoricoOut, OfertaOut
 from calculo import linha_oferta_para_saida
 

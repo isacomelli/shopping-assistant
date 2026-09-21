@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-
 import { OfertaForm } from "@/components/OfertaForm";
 import { ResultadoDetalhado } from "@/components/ResultadoDetalhado";
-import { formatarData, formatarMoeda, obterLogoDaLoja } from "@/lib/format";
+import { formatarData, formatarMoeda, obterLogoDaLoja, rotuloConfiancaNome } from "@/lib/format";
 import type { Cartao, Oferta, OfertaPayload, Perfil } from "@/lib/types";
 
 const MEDALHAS = ["1º lugar", "2º lugar", "3º lugar"];
@@ -57,6 +56,9 @@ export function RankingCard({
             <p className="text-sm text-ink-500">
               Melhor forma de pagamento, {oferta.resultado.melhor_forma_pagamento}
             </p>
+            {rotuloConfiancaNome(oferta.confianca_nome) && (
+              <p className="text-xs text-alert-500">{rotuloConfiancaNome(oferta.confianca_nome)}</p>
+            )}
           </div>
         </div>
         <div className="text-right">

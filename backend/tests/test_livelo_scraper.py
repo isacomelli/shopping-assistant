@@ -22,17 +22,13 @@ HTML_CARTAO_PARCEIRO = """
 
 def test_parsear_html_livelo_le_logo_url_direto_do_src():
     """
-    a logo_url de cada parceiro precisa vir do atributo src de verdade, em vez de um
-    padrao adivinhado a partir do codigo, ja que parceiros diferentes usam extensoes e
-    ate dominios diferentes para a propria logo, ver o comentario em
-    services/casamento_lojas.py sobre esse erro antigo.
+    a logo_url de cada parceiro precisa vir do atributo src de verdade, em vez de um padrao adivinhado a partir do codigo, ja que parceiros diferentes usam extensoes e ate dominios diferentes para a propria logo, ver o comentario em services/casamento_lojas.py sobre esse erro antigo.
     """
     parceiros = parsear_html_livelo(HTML_CARTAO_PARCEIRO)
     por_codigo = {parceiro.codigo: parceiro for parceiro in parceiros}
 
     assert por_codigo["MZL"].logo_url == "https://partners-profile.livelo.com.br/mzl/image.jpeg"
-    # a decolar fica num dominio totalmente diferente do padrao partners-profile,
-    # exatamente o caso que o padrao adivinhado por codigo nao cobre
+    # a decolar fica num dominio totalmente diferente do padrao partners-profile, exatamente o caso que o padrao adivinhado por codigo nao cobre
     assert por_codigo["DCR"].logo_url == "https://www.livelo.com.br/file/general/config_DCR_x.png"
 
 

@@ -68,10 +68,7 @@ def test_encontrar_parceiro_equivalente_devolve_none_quando_nao_ha_casamento():
 
 def test_lista_real_de_parceiros_conhecidos_casa_magazine_luiza_com_magalu():
     """
-    reproduz o bug em que ofertas da Magazine Luiza apareciam com
-    "Valor dos pontos, R$ 0,00" mesmo a Magalu sendo parceira ativa da
-    Livelo, a lista PARCEIROS_LIVELO_CONHECIDOS precisa casar o nome
-    comercial usado pelo buscape com o parceiro cadastrado.
+    reproduz o bug em que ofertas da Magazine Luiza apareciam com "Valor dos pontos, R$ 0,00" mesmo a Magalu sendo parceira ativa da Livelo, a lista PARCEIROS_LIVELO_CONHECIDOS precisa casar o nome comercial usado pelo buscape com o parceiro cadastrado.
     """
     parceiro = encontrar_parceiro_equivalente("Magazine Luiza", PARCEIROS_LIVELO_CONHECIDOS)
     assert parceiro is not None
@@ -81,10 +78,7 @@ def test_lista_real_de_parceiros_conhecidos_casa_magazine_luiza_com_magalu():
 
 def test_obter_url_logo_parceiro_prefere_logo_url_real_do_parceiro():
     """
-    quando o parceiro ja tem uma logo_url real coletada, seja de PARCEIROS_LIVELO_CONHECIDOS,
-    seja de um parceiro atualizado no banco por scrapers/livelo.py, essa url deve ganhar do
-    padrao adivinhado a partir do codigo, que nao serve para parceiros fora do dominio
-    partners-profile.livelo.com.br ou com uma extensao de arquivo diferente de .jpeg.
+    quando o parceiro ja tem uma logo_url real coletada, seja de PARCEIROS_LIVELO_CONHECIDOS, seja de um parceiro atualizado no banco por scrapers/livelo.py, essa url deve ganhar do padrao adivinhado a partir do codigo, que nao serve para parceiros fora do dominio partners-profile.livelo.com.br ou com uma extensao de arquivo diferente de .jpeg.
     """
     parceiro = {"codigo": "DCR", "logo_url": "https://www.livelo.com.br/file/general/config_DCR_x.png"}
     assert obter_url_logo_parceiro(parceiro) == "https://www.livelo.com.br/file/general/config_DCR_x.png"
@@ -97,9 +91,8 @@ def test_obter_url_logo_parceiro_cai_para_padrao_por_codigo_sem_logo_url():
 
 def test_lista_real_de_parceiros_conhecidos_ja_vem_com_logo_url_preenchida():
     """
-    todo parceiro do snapshot fixo foi regerado a partir da coleta manual mais recente,
-    em scrapers/ultimo_html_livelo.html, entao nenhum deveria depender do padrao adivinhado
-    por codigo.
+    todo parceiro do snapshot fixo foi regerado a partir da coleta manual mais recente, em scrapers/ultimo_html_livelo.html, entao nenhum deveria depender do padrao adivinhado por codigo.
     """
     sem_logo_url = [p for p in PARCEIROS_LIVELO_CONHECIDOS if not p.get("logo_url")]
     assert sem_logo_url == []
+    
