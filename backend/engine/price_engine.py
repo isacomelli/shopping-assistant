@@ -32,6 +32,7 @@ class Oferta:
     preco: float = 0.0
 
     parcelas: int = 1
+    preco: float = 0.0
     tipo: str = "online"
     observacoes: str = ""
 
